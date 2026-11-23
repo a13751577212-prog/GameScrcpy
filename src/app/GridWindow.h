@@ -53,9 +53,12 @@ public:
     bool removeCell(const QString& serial);
     void setFrames(const QString& serial, std::shared_ptr<render::FrameSlot> frames);
     void setLabel(const QString& serial, const QString& name, const QString& tone, const QString& status);
+    void setRemark(const QString& serial, const QString& remark);
     void setRate(const QString& serial, double framesPerSecond);
     void setSync(const QString& serial, const GridCells::Sync& sync);
+    void setChecked(const QString& serial, bool checked);
     [[nodiscard]] QStringList serials() const { return m_cells.serials(); }
+    void reorderCells(const QStringList& order);
     [[nodiscard]] bool contains(const QString& serial) const { return m_cells.find(serial) != nullptr; }
     [[nodiscard]] bool holds(const QString& serial) const;
     [[nodiscard]] bool separate(const QString& serial) const;
@@ -81,6 +84,7 @@ signals:
     void targetChosen(const QString& serial);
     void ownWindowWanted(const QString& serial);
     void backToGridWanted(const QString& serial);
+    void cellToggled(const QString& serial);
     void picturesChanged();
     void cursorTouched(const QString& serial, gs::input::CursorPhase phase, gs::input::Vec2 position);
     void cursorScrolled(const QString& serial, gs::input::Vec2 position, int horizontal, int vertical);

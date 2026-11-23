@@ -32,7 +32,12 @@
 
 #include <QAbstractListModel>
 #include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMap>
+#include <QSet>
 #include <QSortFilterProxyModel>
+#include <QFile>
 #include <QImage>
 #include <QPointer>
 #include <QSize>
@@ -339,6 +344,14 @@ public:
     Q_INVOKABLE QString setSyncFollowers(const QString& master, const QStringList& followers);
     Q_INVOKABLE void stopSync(const QString& master);
 
+    Q_INVOKABLE QString deviceRemark(const QString& serial) const;
+    Q_INVOKABLE void setDeviceRemark(const QString& serial, const QString& text);
+    Q_INVOKABLE void setGridMaster(const QString& serial);
+    Q_INVOKABLE void toggleGridFollow(const QString& serial);
+    Q_INVOKABLE void setGridFollowAll(bool on);
+    Q_INVOKABLE void setAutoMirror(bool on);
+    Q_INVOKABLE bool autoMirror() const noexcept { return m_autoMirror; }
+
     bool addDemoCapture(const QString& recording);
     [[nodiscard]] QVariantList otherVideoDevices() const { return m_otherVideoDevices; }
     Q_INVOKABLE void setCaptureOption(const QString& serial, const QString& key, const QVariant& value);
@@ -632,6 +645,13 @@ private:
     void syncGrid();
     void refreshGrid();
     void closeGrid();
+    void loadRemarks();
+    void saveRemarks() const;
+    [[nodiscard]] int remarkKey(const Row& row, int rank) const;
+    [[nodiscard]] QStringList remarkOrder() const;
+    [[nodiscard]] bool canAutoMirror(const Row& row) const;
+    void autoMirrorNow();
+    void applyFollowSelection();
     void setGridSeparate(const QString& serial, bool separate, bool activate);
     bool showFromGrid(const QString& serial, bool activate);
     [[nodiscard]] QString gridFront() const;
@@ -860,6 +880,12 @@ private:
     QPointer<VisionWorkbench> m_vision;
     QString m_materialsClient;
     QPointer<GridWindow> m_grid;
+    QMap<QString, QString> m_remarks;
+    QSet<QString> m_followOff;
+    QSet<QString> m_mirrorBlocked;
+    QString m_gridMaster;
+    bool m_autoMirror = true;
+    bool m_gridAutoOpened = false;
     LogicConsole m_logicConsole;
     std::map<QString, QPointer<QObject>> m_workbenches;
     QPointer<TaskLibrary> m_tasks;

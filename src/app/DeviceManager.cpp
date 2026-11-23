@@ -86,9 +86,11 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <set>
 #include <optional>
+#include <system_error>
 #include <tuple>
 #include <utility>
 
@@ -515,6 +517,7 @@ DeviceManager::DeviceManager(adb::AdbClient adb, std::filesystem::path adbExecut
     m_sorted.setFilterRegularExpression(QRegularExpression(QStringLiteral("^true$")));
     m_sorted.setDynamicSortFilter(true);
     m_sorted.sort(0);
+    loadRemarks();
     ensureAdb();
     m_usb = std::make_unique<UsbPhoneWatcher>();
     connect(m_usb.get(), &UsbPhoneWatcher::phonesChanged, this, &DeviceManager::usbChanged);
@@ -750,7 +753,7 @@ QVariant DeviceManager::data(const QModelIndex& index, int role) const
         case FailedRole:
             return shown.failed;
         default:
-            return shown.rank;
+            return remarkKey(row, shown.rank);
         }
     }
     case MetaRole: {
@@ -2024,6 +2027,7 @@ void DeviceManager::disconnectDevice(const QString& serial)
     if (index < 0) {
         return;
     }
+    m_mirrorBlocked.insert(serial);
     Row& row = m_rows[static_cast<std::size_t>(index)];
     stopRecording(row, false);
     if (row.capture != nullptr) {
@@ -2726,6 +2730,7 @@ void DeviceManager::devicesChanged(const adb::TrackerUpdate& update)
     if (!m_rows.empty()) {
         emit dataChanged(index(0), index(static_cast<int>(m_rows.size()) - 1));
     }
+    autoMirrorNow();
     emit countsChanged();
 }
 
@@ -3143,6 +3148,7 @@ void DeviceManager::showGrid()
             [this](const QString& serial) { setGridSeparate(serial, true, true); });
     connect(grid, &GridWindow::backToGridWanted, this,
             [this](const QString& serial) { setGridSeparate(serial, false, true); });
+    connect(grid, &GridWindow::cellToggled, this, &DeviceManager::toggleGridFollow);
     connect(grid, &GridWindow::picturesChanged, this, [this] {
         if (m_grid == nullptr) {
             return;
@@ -3296,6 +3302,8 @@ void DeviceManager::refreshGrid()
         m_grid->setLabel(serial, row.name(),
                          problem == StatusProblem::None ? QStringLiteral("ok") : QStringLiteral("warn"),
                          problemText(problem));
+        m_grid->setRemark(serial, m_remarks.value(row.serial));
+        m_grid->setChecked(serial, !m_followOff.contains(row.serial));
         m_grid->setRate(serial, streaming(row) ? row.stats.value(QStringLiteral("fps"), -1.0).toDouble() : -1.0);
         GridCells::Sync sync;
         if (const SyncGroup* group = m_sync.groupOf(serial); group != nullptr) {
@@ -3308,6 +3316,205 @@ void DeviceManager::refreshGrid()
                                    .leader = leaderName};
         }
         m_grid->setSync(serial, sync);
+    }
+    m_grid->reorderCells(remarkOrder());
+}
+
+QString DeviceManager::deviceRemark(const QString& serial) const
+{
+    return m_remarks.value(serial);
+}
+
+void DeviceManager::setDeviceRemark(const QString& serial, const QString& text)
+{
+    if (serial.isEmpty()) {
+        return;
+    }
+    const QString clean = text.trimmed();
+    if (m_remarks.value(serial) == clean) {
+        return;
+    }
+    if (clean.isEmpty()) {
+        m_remarks.remove(serial);
+    } else {
+        m_remarks.insert(serial, clean);
+    }
+    saveRemarks();
+    if (!m_rows.empty()) {
+        emit dataChanged(index(0), index(static_cast<int>(m_rows.size()) - 1));
+    }
+    refreshGrid();
+}
+
+void DeviceManager::setGridMaster(const QString& serial)
+{
+    if (serial.isEmpty() || indexOf(serial) < 0) {
+        return;
+    }
+    if (m_gridMaster == serial) {
+        stopSync(serial);
+        m_gridMaster.clear();
+        return;
+    }
+    if (!m_gridMaster.isEmpty()) {
+        stopSync(m_gridMaster);
+    }
+    m_gridMaster = serial;
+    if (m_grid != nullptr) {
+        m_grid->setTarget(serial);
+    }
+    applyFollowSelection();
+}
+
+void DeviceManager::toggleGridFollow(const QString& serial)
+{
+    if (serial.isEmpty() || indexOf(serial) < 0) {
+        return;
+    }
+    if (!m_followOff.remove(serial)) {
+        m_followOff.insert(serial);
+    }
+    applyFollowSelection();
+}
+
+void DeviceManager::setGridFollowAll(bool on)
+{
+    m_followOff.clear();
+    if (!on) {
+        for (const Row& row : m_rows) {
+            if (row.serial != m_gridMaster) {
+                m_followOff.insert(row.serial);
+            }
+        }
+    }
+    applyFollowSelection();
+}
+
+void DeviceManager::setAutoMirror(bool on)
+{
+    m_autoMirror = on;
+    if (on) {
+        autoMirrorNow();
+    }
+}
+
+void DeviceManager::applyFollowSelection()
+{
+    if (!m_gridMaster.isEmpty()) {
+        QStringList followers;
+        for (const Row& row : m_rows) {
+            if (row.serial != m_gridMaster && syncable(row) && !m_followOff.contains(row.serial)) {
+                followers.append(row.serial);
+            }
+        }
+        setSyncFollowers(m_gridMaster, followers);
+    }
+    if (m_grid != nullptr) {
+        for (const Row& row : m_rows) {
+            m_grid->setChecked(row.serial, !m_followOff.contains(row.serial));
+        }
+    }
+}
+
+void DeviceManager::loadRemarks()
+{
+    const std::filesystem::path file = dataDirectory() / "device-remarks.json";
+    QFile input(QString::fromStdWString(file.wstring()));
+    if (!input.open(QIODevice::ReadOnly)) {
+        return;
+    }
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(input.readAll(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject()) {
+        return;
+    }
+    const QJsonObject object = document.object();
+    for (auto it = object.begin(); it != object.end(); ++it) {
+        if (it.value().isString()) {
+            m_remarks.insert(it.key(), it.value().toString());
+        }
+    }
+}
+
+void DeviceManager::saveRemarks() const
+{
+    const std::filesystem::path directory = dataDirectory();
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    QFile output(QString::fromStdWString((directory / "device-remarks.json").wstring()));
+    if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qWarning("device remarks: cannot write %s", qUtf8Printable(output.fileName()));
+        return;
+    }
+    QJsonObject object;
+    for (auto it = m_remarks.begin(); it != m_remarks.end(); ++it) {
+        object.insert(it.key(), it.value());
+    }
+    output.write(QJsonDocument(object).toJson(QJsonDocument::Compact));
+}
+
+int DeviceManager::remarkKey(const Row& row, int rank) const
+{
+    const int state = std::clamp(rank, 0, 9999);
+    const QString text = m_remarks.value(row.serial);
+    if (text.isEmpty()) {
+        return 1000000 + state;
+    }
+    int number = 0;
+    for (qsizetype at = 0; at < text.size() && text.at(at).isDigit(); ++at) {
+        number = std::min(999, number * 10 + text.at(at).digitValue());
+    }
+    if (number > 0) {
+        return number * 10000 + state;
+    }
+    return 500000 + state;
+}
+
+QStringList DeviceManager::remarkOrder() const
+{
+    std::vector<std::pair<int, QString>> keys;
+    keys.reserve(m_rows.size());
+    for (const Row& row : m_rows) {
+        keys.emplace_back(remarkKey(row, 0), row.serial);
+    }
+    std::stable_sort(keys.begin(), keys.end(), [](const auto& left, const auto& right) {
+        return left.first < right.first;
+    });
+    QStringList order;
+    order.reserve(static_cast<qsizetype>(keys.size()));
+    for (const auto& entry : keys) {
+        order.append(entry.second);
+    }
+    return order;
+}
+
+bool DeviceManager::canAutoMirror(const Row& row) const
+{
+    return m_autoMirror && !m_mirrorBlocked.contains(row.serial) && row.demo == nullptr &&
+           row.capture == nullptr && !row.aoaOnly && !row.provided && !row.transported && row.listed &&
+           row.state == adb::DeviceState::Device && canConnect(row);
+}
+
+void DeviceManager::autoMirrorNow()
+{
+    if (!m_autoMirror) {
+        return;
+    }
+    QStringList pending;
+    for (const Row& row : m_rows) {
+        if (canAutoMirror(row)) {
+            pending.append(row.serial);
+        }
+    }
+    for (const QString& serial : pending) {
+        const int at = indexOf(serial);
+        if (at >= 0 && canAutoMirror(m_rows[static_cast<std::size_t>(at)])) {
+            connectDevice(serial);
+        }
+    }
+    if (!m_gridAutoOpened && m_grid == nullptr && !pending.isEmpty()) {
+        m_gridAutoOpened = true;
+        showGrid();
     }
 }
 

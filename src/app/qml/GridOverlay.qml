@@ -13,16 +13,27 @@ Item {
     property var cells: []
     readonly property var chosen: overlay.cells.find(entry => entry.target === true) ?? null
     readonly property real topInset: titleBar.height + toolbar.height
-    readonly property int headerHeight: Theme.size.control
-    readonly property int menuWidth: Theme.size.controlSmall + Theme.space.xs
+    readonly property int footerHeight: Theme.size.control
     readonly property int gap: Theme.space.sm
     readonly property int margin: Theme.space.sm
     readonly property int inset: Theme.size.focusRing
-    readonly property bool popupOpen: cellMenu.visible || syncDialog.visible
+    readonly property bool popupOpen: cellMenu.visible || syncDialog.visible || remarkEdit.visible
     readonly property rect noticeArea: notice.visible ? Qt.rect(notice.x, notice.y, notice.width, notice.height)
                                                       : Qt.rect(0, 0, 0, 0)
     readonly property var syncHues: ["azure", "teal", "rose", "lime", "amber", "orange"].filter(
                                         hue => Theme.toneHues[hue] !== Theme.accentName)
+    readonly property bool allFollowChecked: {
+        let total = 0
+        let checked = 0
+        for (const entry of overlay.cells) {
+            if (entry.target === true || entry.separate === true)
+                continue
+            total++
+            if (entry.checked === true)
+                checked++
+        }
+        return total > 0 && total === checked
+    }
 
     signal releaseWanted()
 
@@ -56,6 +67,32 @@ Item {
         syncDialog.show()
     }
 
+    function editRemark(serial: string, at: Item) {
+        if (serial === "")
+            return
+        const corner = at.mapToItem(overlay, 0, 0)
+        internal.remarkSerial = serial
+        remarkEdit.x = corner.x
+        remarkEdit.y = corner.y
+        remarkEdit.width = at.width
+        remarkEdit.height = at.height
+        remarkEdit.text = overlay.cellOf(serial)?.remark ?? ""
+        remarkEdit.visible = true
+        remarkEdit.forceActiveFocus()
+        remarkEdit.selectAll()
+    }
+
+    function commitRemark() {
+        if (!remarkEdit.visible)
+            return
+        DeviceManager.setDeviceRemark(internal.remarkSerial, remarkEdit.text)
+        remarkEdit.visible = false
+    }
+
+    function cancelRemark() {
+        remarkEdit.visible = false
+    }
+
     objectName: "gridOverlay"
     Window.onWindowChanged: internal.attachChrome()
     Component.onCompleted: internal.attachChrome()
@@ -71,6 +108,7 @@ Item {
 
         property bool chromeAttached: false
         property string syncSerial
+        property string remarkSerial
 
         function attachChrome() {
             if (chromeAttached || overlay.Window.window === null)
@@ -78,6 +116,29 @@ Item {
             chrome.window = overlay.Window.window
             chromeAttached = chrome.attach()
         }
+    }
+
+    Binding {
+        target: selectAll
+        property: "checked"
+        value: overlay.allFollowChecked
+    }
+
+    TextField {
+        id: remarkEdit
+
+        objectName: "gridRemarkEdit"
+        visible: false
+        z: 10
+        dense: true
+        bare: true
+        placeholderText: qsTr("Number or name")
+        onAccepted: overlay.commitRemark()
+        onActiveFocusChanged: {
+            if (!activeFocus && visible)
+                overlay.cancelRemark()
+        }
+        Keys.onEscapePressed: overlay.cancelRemark()
     }
 
     WindowChrome {
@@ -230,7 +291,7 @@ Item {
                 width: Math.max(0, (who.aimed ? release.x - Theme.space.xs : who.width - Theme.space.md) - x)
                 textFormat: Text.PlainText
                 text: who.aimed ? qsTr("Keys and mouse go to: %1").arg(overlay.chosen.name)
-                                : qsTr("Click a cell to give it the keys and mouse")
+                                : qsTr("Click a cell to toggle whether it follows")
                 elide: Text.ElideRight
                 color: who.aimed ? Theme.colors.accentText : Theme.colors.textSecondary
                 font.pixelSize: Theme.type.label.size
@@ -296,6 +357,26 @@ Item {
             anchors.rightMargin: toolbar.rightPadding
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.space.sm
+
+            Checkbox {
+                id: selectAll
+
+                objectName: "gridSelectAll"
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Select all")
+                onClicked: DeviceManager.setGridFollowAll(checked)
+            }
+
+            Button {
+                id: selectNone
+
+                objectName: "gridSelectNone"
+                anchors.verticalCenter: parent.verticalCenter
+                tone: "ghost"
+                small: true
+                text: qsTr("Select none")
+                onClicked: DeviceManager.setGridFollowAll(false)
+            }
 
             T.AbstractButton {
                 id: syncCapsule
@@ -396,6 +477,41 @@ Item {
         }
     }
 
+    component CellButton: T.AbstractButton {
+        id: button
+
+        property string iconName
+        property string tip
+        property bool selected: false
+
+        width: Theme.size.controlSmall
+        height: Theme.size.controlSmall
+        hoverEnabled: true
+        focusPolicy: Qt.TabFocus
+        Accessible.name: tip
+
+        Tooltip {
+            y: -Theme.size.tooltip
+            text: button.tip
+            visible: button.tip !== "" && button.hovered && !button.down
+        }
+
+        contentItem: Icon {
+            anchors.centerIn: parent
+            name: button.iconName
+            size: Theme.size.iconSmall
+            color: !button.enabled ? Theme.colors.textTertiary
+                 : button.selected ? Theme.colors.accentText
+                 : button.hovered ? Theme.colors.textPrimary : Theme.colors.textSecondary
+        }
+
+        background: Rectangle {
+            radius: Theme.radius.xs
+            color: button.selected ? Theme.colors.accentSubtle
+                 : button.hovered ? Theme.colors.statePress : "transparent"
+        }
+    }
+
     Repeater {
         model: overlay.cells.length
 
@@ -407,6 +523,9 @@ Item {
             readonly property bool chosen: entry.target === true
             readonly property bool away: entry.separate === true
             readonly property real rate: entry.rate ?? -1
+            readonly property bool following: !chosen && !away && entry.checked === true
+                                              && overlay.chosen !== null
+            readonly property bool narrow: width < 300
 
             objectName: "gridCell"
             x: entry.x ?? 0
@@ -414,34 +533,48 @@ Item {
             width: entry.width ?? 0
             height: entry.height ?? 0
 
+            CommandState { id: backCommand; command: "device.back"; target: cell.entry.serial ?? "" }
+            CommandState { id: homeCommand; command: "device.home"; target: cell.entry.serial ?? "" }
+            CommandState { id: recentCommand; command: "device.appSwitch"; target: cell.entry.serial ?? "" }
+
+            Binding {
+                target: followBox
+                property: "checked"
+                value: cell.entry.checked === true
+            }
+
             Rectangle {
                 objectName: "gridFrame"
                 anchors.fill: parent
                 radius: Theme.radius.lg
                 color: Theme.colors.bgRaised
-                border.width: cell.chosen ? Theme.size.focusRing : Theme.size.stroke
-                border.color: cell.chosen ? Theme.colors.accent : Theme.colors.strokeSubtle
+                border.width: cell.chosen ? Theme.size.syncFrame
+                            : cell.following ? Theme.size.syncFrameFollower : Theme.size.stroke
+                border.color: cell.chosen || cell.following ? Theme.colors.accent : Theme.colors.strokeSubtle
             }
 
             Rectangle {
                 objectName: "gridPicture"
                 x: overlay.inset
-                y: overlay.headerHeight
+                y: overlay.inset
                 width: Math.max(0, parent.width - 2 * overlay.inset)
-                height: Math.max(0, parent.height - overlay.headerHeight - overlay.inset)
-                bottomLeftRadius: Math.max(0, Theme.radius.lg - overlay.inset)
-                bottomRightRadius: Math.max(0, Theme.radius.lg - overlay.inset)
+                height: Math.max(0, parent.height - overlay.footerHeight - 2 * overlay.inset)
+                topLeftRadius: Math.max(0, Theme.radius.lg - overlay.inset)
+                topRightRadius: Math.max(0, Theme.radius.lg - overlay.inset)
                 color: Theme.colors.bgSunken
             }
 
             Item {
-                objectName: "gridHeader"
+                id: footer
+
+                objectName: "gridFooter"
+                y: Math.max(0, parent.height - overlay.footerHeight)
                 width: parent.width
-                height: overlay.headerHeight
+                height: overlay.footerHeight
 
                 Rectangle {
                     x: overlay.inset
-                    anchors.bottom: parent.bottom
+                    anchors.top: parent.top
                     width: Math.max(0, parent.width - 2 * overlay.inset)
                     height: Theme.size.stroke
                     color: Theme.colors.strokeSubtle
@@ -460,66 +593,108 @@ Item {
                          : cell.entry.tone === "ok" ? Theme.colors.success : Theme.colors.textTertiary
                 }
 
-                Text {
-                    id: nameText
+                Item {
+                    id: labelArea
 
-                    objectName: "gridName"
-                    x: dot.x + dot.width + Theme.space.sm
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.max(0, Math.min(implicitWidth,
-                                                (statusText.visible ? statusText.x : moreButton.x) - x - Theme.space.sm
-                                                - (rateText.visible ? rateText.implicitWidth + Theme.space.sm : 0)))
-                    textFormat: Text.PlainText
-                    text: cell.entry.name ?? ""
-                    elide: Text.ElideRight
-                    color: cell.chosen ? Theme.colors.accentText : Theme.colors.textPrimary
-                    font.pixelSize: Theme.type.body.size
-                    font.weight: Font.DemiBold
-                }
-
-                Text {
-                    id: rateText
-
-                    objectName: "gridRate"
-                    x: nameText.x + nameText.width + Theme.space.sm
-                    anchors.verticalCenter: parent.verticalCenter
-                    visible: text !== ""
-                    textFormat: Text.PlainText
-                    text: cell.away ? "—" : cell.rate >= 0 ? qsTr("%1 fps").arg(cell.rate) : ""
-                    color: Theme.colors.textTertiary
-                    font.pixelSize: Theme.type.caption.size
-                    font.features: ({ "tnum": 1 })
-                }
-
-                Text {
-                    id: statusText
-
-                    objectName: "gridStatus"
-                    anchors.right: moreButton.left
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.space.md + Theme.size.pillDot + Theme.space.sm
+                    anchors.right: buttonRow.left
                     anchors.rightMargin: Theme.space.xs
                     anchors.verticalCenter: parent.verticalCenter
-                    visible: text !== ""
-                    width: Math.min(implicitWidth, parent.width / 3)
-                    textFormat: Text.PlainText
-                    text: cell.entry.status ?? ""
-                    elide: Text.ElideRight
-                    color: Theme.colors.warningText
-                    font.pixelSize: Theme.type.caption.size
+                    height: Math.max(0, overlay.footerHeight - 2 * Theme.space.xxs)
+
+                    Text {
+                        id: nameText
+
+                        objectName: "gridName"
+                        anchors.fill: parent
+                        textFormat: Text.PlainText
+                        text: {
+                            const remark = cell.entry.remark ?? ""
+                            const label = remark !== "" ? remark : (cell.entry.name ?? "")
+                            const fps = cell.away ? "" : cell.rate >= 0 ? " · " + qsTr("%1 fps").arg(cell.rate) : ""
+                            return label + fps
+                        }
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+                        color: cell.chosen ? Theme.colors.accentText : Theme.colors.textPrimary
+                        font.pixelSize: Theme.type.caption.size
+                        font.weight: Font.DemiBold
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton
+                        onDoubleClicked: overlay.editRemark(cell.entry.serial ?? "", labelArea)
+                    }
                 }
 
-                Button {
-                    id: moreButton
+                Row {
+                    id: buttonRow
 
-                    objectName: "gridMore"
                     anchors.right: parent.right
                     anchors.rightMargin: Theme.space.xs
                     anchors.verticalCenter: parent.verticalCenter
-                    tone: "ghost"
-                    small: true
-                    iconName: "ellipsis"
-                    toolTip: qsTr("More")
-                    focusPolicy: Qt.TabFocus
-                    onClicked: overlay.openMenu(moreButton, cell.entry.serial ?? "")
+                    spacing: Theme.space.xxs
+
+                    CellButton {
+                        objectName: "gridPaw"
+                        iconName: "paw-print"
+                        selected: cell.chosen
+                        tip: cell.chosen ? qsTr("Stop being the master") : qsTr("Make this the master")
+                        onClicked: DeviceManager.setGridMaster(cell.entry.serial ?? "")
+                    }
+
+                    CellButton {
+                        objectName: "gridExpand"
+                        visible: !cell.narrow
+                        iconName: "popout"
+                        tip: qsTr("Open in its own window")
+                        onClicked: DeviceManager.showWindow(cell.entry.serial ?? "")
+                    }
+
+                    Checkbox {
+                        id: followBox
+
+                        objectName: "gridFollow"
+                        visible: !cell.chosen
+                        anchors.verticalCenter: parent.verticalCenter
+                        onClicked: DeviceManager.toggleGridFollow(cell.entry.serial ?? "")
+                    }
+
+                    CellButton {
+                        objectName: "gridRecents"
+                        visible: !cell.narrow
+                        iconName: "square"
+                        tip: qsTr("Recent apps")
+                        enabled: recentCommand.enabled
+                        onClicked: recentCommand.trigger()
+                    }
+
+                    CellButton {
+                        objectName: "gridBack"
+                        iconName: "arrow-left"
+                        tip: qsTr("Back")
+                        enabled: backCommand.enabled
+                        onClicked: backCommand.trigger()
+                    }
+
+                    CellButton {
+                        objectName: "gridHome"
+                        iconName: "house"
+                        tip: qsTr("Home")
+                        enabled: homeCommand.enabled
+                        onClicked: homeCommand.trigger()
+                    }
+
+                    CellButton {
+                        id: moreButton
+
+                        objectName: "gridMore"
+                        iconName: "ellipsis"
+                        tip: qsTr("More")
+                        onClicked: overlay.openMenu(moreButton, cell.entry.serial ?? "")
+                    }
                 }
             }
 
@@ -527,7 +702,7 @@ Item {
                 objectName: "gridSeparate"
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: overlay.headerHeight / 2
+                anchors.verticalCenterOffset: -overlay.footerHeight / 2
                 width: Math.max(0, parent.width - 2 * Theme.space.md)
                 visible: cell.away
                 spacing: Theme.space.sm

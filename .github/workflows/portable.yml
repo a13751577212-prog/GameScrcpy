@@ -1,0 +1,74 @@
+name: Portable package
+
+on:
+  push:
+    branches: ["mod/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Windows portable zip
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      QSG_RHI_PREFER_SOFTWARE_RENDERER: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.1"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtshadertools
+          cache: true
+
+      - name: MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Java for the phone side
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build phone side APKs
+        working-directory: android
+        shell: pwsh
+        run: .\gradlew.bat build --continue --console=plain
+
+      - name: Configure, build and test the Windows client
+        shell: pwsh
+        run: |
+          $env:GS_QT_DIR = $env:QT_ROOT_DIR
+          cmake --workflow --preset ci
+
+      - name: QML lint (zero warnings)
+        shell: pwsh
+        run: |
+          $out = cmake --build --preset ci --target all_qmllint 2>&1
+          $out
+          if ($LASTEXITCODE -ne 0 -or ($out | Select-String -Pattern '^(Warning|Error):')) { exit 1 }
+
+      - name: Pack the portable zip
+        shell: pwsh
+        run: .\tools\package.ps1 -NoSetup -BuildDir build\ci
+
+      - name: Upload the portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameScrcpy-portable
+          path: dist/*portable.zip
+          if-no-files-found: error
+          retention-days: 30

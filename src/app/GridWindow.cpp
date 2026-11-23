@@ -99,11 +99,10 @@ void GridWindow::attachOverlay(QQmlEngine& engine)
         return value.isValid() ? value.toDouble() : fallback;
     };
     m_top = qRound(metric("topInset", m_top));
-    m_metrics.header = metric("headerHeight", m_metrics.header);
+    m_metrics.footer = metric("footerHeight", m_metrics.footer);
     m_metrics.gap = metric("gap", m_metrics.gap);
     m_metrics.margin = metric("margin", m_metrics.margin);
     m_metrics.inset = metric("inset", m_metrics.inset);
-    m_metrics.menu = metric("menuWidth", m_metrics.menu);
     connect(overlay, SIGNAL(releaseWanted()), this, SLOT(releaseTarget()));
     QQmlComponent hintComponent(&engine, QStringLiteral("GameScrcpy.App"), QStringLiteral("GridHintLayer"));
     QObject* hintObject = hintComponent.create();
@@ -201,6 +200,13 @@ void GridWindow::setLabel(const QString& serial, const QString& name, const QStr
     }
 }
 
+void GridWindow::setRemark(const QString& serial, const QString& remark)
+{
+    if (m_cells.setRemark(serial, remark)) {
+        publishCells();
+    }
+}
+
 void GridWindow::setRate(const QString& serial, double framesPerSecond)
 {
     if (m_cells.setRate(serial, framesPerSecond)) {
@@ -212,6 +218,20 @@ void GridWindow::setSync(const QString& serial, const GridCells::Sync& sync)
 {
     if (m_cells.setSync(serial, sync)) {
         publishCells();
+    }
+}
+
+void GridWindow::setChecked(const QString& serial, bool checked)
+{
+    if (m_cells.setChecked(serial, checked)) {
+        publishCells();
+    }
+}
+
+void GridWindow::reorderCells(const QStringList& order)
+{
+    if (m_cells.reorder(order)) {
+        layoutCells();
     }
 }
 
@@ -231,6 +251,7 @@ void GridWindow::setTarget(const QString& serial)
 {
     if (m_cells.setTarget(serial)) {
         targetChanged();
+        emit targetChosen(serial);
     }
 }
 
@@ -435,17 +456,16 @@ bool GridWindow::routePress(const QMouseEvent& mouse, bool doubleClick)
     const GridCells::Press press =
         m_cells.press(mouse.position(), mouse.button(), static_cast<std::int64_t>(mouse.timestamp()));
     m_forwarded = press.action == GridCells::Action::Outside || press.action == GridCells::Action::Forward ||
-                  press.action == GridCells::Action::Menu;
+                  press.action == GridCells::Action::Chrome;
     switch (press.action) {
     case GridCells::Action::Outside:
     case GridCells::Action::Forward:
-    case GridCells::Action::Menu:
+    case GridCells::Action::Chrome:
         return false;
     case GridCells::Action::None:
         break;
-    case GridCells::Action::Select:
-        targetChanged();
-        emit targetChosen(press.serial);
+    case GridCells::Action::Toggle:
+        emit cellToggled(press.serial);
         break;
     case GridCells::Action::OwnWindow:
         emit ownWindowWanted(press.serial);
@@ -712,6 +732,7 @@ void GridWindow::publishCells()
     for (const GridCells::Cell& cell : m_cells.cells()) {
         cells.append(QVariantMap{{QStringLiteral("serial"), cell.serial},
                                  {QStringLiteral("name"), cell.name},
+                                 {QStringLiteral("remark"), cell.remark},
                                  {QStringLiteral("tone"), cell.tone},
                                  {QStringLiteral("status"), cell.status},
                                  {QStringLiteral("rate"), cell.rate},
@@ -720,6 +741,7 @@ void GridWindow::publishCells()
                                  {QStringLiteral("syncCount"), cell.sync.followers},
                                  {QStringLiteral("syncLeader"), cell.sync.leader},
                                  {QStringLiteral("separate"), cell.separate},
+                                 {QStringLiteral("checked"), cell.checked},
                                  {QStringLiteral("target"), cell.serial == target()},
                                  {QStringLiteral("x"), cell.area.x()},
                                  {QStringLiteral("y"), cell.area.y()},

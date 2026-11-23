@@ -58,6 +58,38 @@ QStringList GridCells::serials() const
     return list;
 }
 
+bool GridCells::reorder(const QStringList& order)
+{
+    std::vector<Cell> next;
+    next.reserve(m_cells.size());
+    for (const QString& serial : order) {
+        if (const Cell* cell = find(serial); cell != nullptr) {
+            next.push_back(*cell);
+        }
+    }
+    for (const Cell& cell : m_cells) {
+        if (!order.contains(cell.serial)) {
+            next.push_back(cell);
+        }
+    }
+    if (next.size() != m_cells.size()) {
+        return false;
+    }
+    bool changed = false;
+    for (std::size_t at = 0; at < next.size(); ++at) {
+        if (next[at].serial != m_cells[at].serial) {
+            changed = true;
+            break;
+        }
+    }
+    if (!changed) {
+        return false;
+    }
+    m_cells = std::move(next);
+    m_last.reset();
+    return true;
+}
+
 bool GridCells::setAspect(const QString& serial, double aspect)
 {
     Cell* cell = cellOf(serial);
@@ -83,6 +115,16 @@ bool GridCells::setLabel(const QString& serial, const QString& name, const QStri
     return true;
 }
 
+bool GridCells::setRemark(const QString& serial, const QString& remark)
+{
+    Cell* cell = cellOf(serial);
+    if (cell == nullptr || cell->remark == remark) {
+        return false;
+    }
+    cell->remark = remark;
+    return true;
+}
+
 bool GridCells::setRate(const QString& serial, double framesPerSecond)
 {
     Cell* cell = cellOf(serial);
@@ -105,6 +147,16 @@ bool GridCells::setSync(const QString& serial, const Sync& sync)
         return false;
     }
     cell->sync = sync;
+    return true;
+}
+
+bool GridCells::setChecked(const QString& serial, bool checked)
+{
+    Cell* cell = cellOf(serial);
+    if (cell == nullptr || cell->checked == checked) {
+        return false;
+    }
+    cell->checked = checked;
     return true;
 }
 
@@ -148,7 +200,8 @@ std::vector<GridItem> GridCells::items(const Metrics& metrics) const
     std::vector<GridItem> list;
     list.reserve(m_cells.size());
     for (const Cell& cell : m_cells) {
-        list.push_back({.aspect = cell.aspect, .chrome = QSizeF(2.0 * metrics.inset, metrics.header + metrics.inset)});
+        list.push_back({.aspect = cell.aspect,
+                        .chrome = QSizeF(2.0 * metrics.inset, metrics.footer + 2.0 * metrics.inset)});
     }
     return list;
 }
@@ -162,12 +215,11 @@ void GridCells::layout(const QRectF& area, const Metrics& metrics)
         Cell& cell = m_cells[index];
         const QRectF& rect = rects[index];
         cell.area = rect;
-        cell.header = QRectF(rect.x(), rect.y(), rect.width(), std::min(metrics.header, rect.height()));
-        const double menuWidth = std::max(0.0, std::min(metrics.menu, rect.width()));
-        cell.menu = QRectF(rect.right() - menuWidth, rect.y(), menuWidth, cell.header.height());
-        cell.view = QRectF(rect.x() + metrics.inset, rect.y() + metrics.header,
+        const double bar = std::max(0.0, std::min(metrics.footer, rect.height()));
+        cell.footer = QRectF(rect.x(), rect.bottom() - bar, rect.width(), bar);
+        cell.view = QRectF(rect.x() + metrics.inset, rect.y() + metrics.inset,
                            std::max(0.0, rect.width() - 2.0 * metrics.inset),
-                           std::max(0.0, rect.height() - metrics.header - metrics.inset));
+                           std::max(0.0, rect.height() - bar - 2.0 * metrics.inset));
     }
 }
 
@@ -191,31 +243,30 @@ GridCells::Press GridCells::press(QPointF at, Qt::MouseButton button, std::int64
         return {};
     }
     const Cell& cell = *found;
-    if (cell.menu.contains(at)) {
+    if (cell.footer.contains(at)) {
         m_last.reset();
-        return {.action = Action::Menu, .serial = cell.serial};
+        return {.action = Action::Chrome, .serial = cell.serial};
     }
-    const bool header = cell.header.contains(at);
+    const bool inView = cell.view.contains(at);
     const bool repeated = repeats(cell.serial, at, button, timeMs);
     if (cell.separate) {
         if (repeated) {
             m_last.reset();
             return {.action = Action::BackToGrid, .serial = cell.serial};
         }
-        remember(cell, at, button, timeMs, header, false);
+        remember(cell, at, button, timeMs, false);
         return {.action = Action::None, .serial = cell.serial};
     }
-    if (cell.serial != m_target) {
-        m_target = cell.serial;
-        remember(cell, at, button, timeMs, header, true);
-        return {.action = Action::Select, .serial = cell.serial};
+    if (!inView) {
+        m_last.reset();
+        return {.action = Action::None, .serial = cell.serial};
     }
-    if (repeated && (m_last->selecting || (header && m_last->header))) {
+    if (repeated && m_last && m_last->view) {
         m_last.reset();
         return {.action = Action::OwnWindow, .serial = cell.serial};
     }
-    remember(cell, at, button, timeMs, header, false);
-    return {.action = header ? Action::None : Action::Forward, .serial = cell.serial};
+    remember(cell, at, button, timeMs, true);
+    return {.action = cell.serial == m_target ? Action::Forward : Action::Toggle, .serial = cell.serial};
 }
 
 bool GridCells::repeats(const QString& serial, QPointF at, Qt::MouseButton button, std::int64_t timeMs) const
@@ -225,14 +276,13 @@ bool GridCells::repeats(const QString& serial, QPointF at, Qt::MouseButton butto
            std::hypot(at.x() - m_last->at.x(), at.y() - m_last->at.y()) <= m_doubleClickDistance;
 }
 
-void GridCells::remember(const Cell& cell, QPointF at, Qt::MouseButton button, std::int64_t timeMs, bool header,
-                         bool selecting)
+void GridCells::remember(const Cell& cell, QPointF at, Qt::MouseButton button, std::int64_t timeMs, bool view)
 {
     if (button != Qt::LeftButton) {
         m_last.reset();
         return;
     }
-    m_last = LastPress{.serial = cell.serial, .at = at, .timeMs = timeMs, .header = header, .selecting = selecting};
+    m_last = LastPress{.serial = cell.serial, .at = at, .timeMs = timeMs, .view = view};
 }
 
 GridHints gridHints(const GridCells& cells, bool keymap, bool textInput, bool foreground, const QString& wheelSerial)

@@ -31,27 +31,27 @@ public:
     struct Cell {
         QString serial;
         QString name;
+        QString remark;
         QString tone;
         QString status;
         double aspect = 0;
         double rate = -1;
         Sync sync;
         bool separate = false;
+        bool checked = true;
         QRectF area;
-        QRectF header;
-        QRectF menu;
+        QRectF footer;
         QRectF view;
     };
 
     struct Metrics {
-        double header = 28;
+        double footer = 32;
         double gap = 8;
         double margin = 8;
         double inset = 2;
-        double menu = 30;
     };
 
-    enum class Action : std::uint8_t { Outside, None, Forward, Select, OwnWindow, BackToGrid, Menu };
+    enum class Action : std::uint8_t { Outside, None, Forward, Toggle, Chrome, OwnWindow, BackToGrid };
 
     struct Press {
         Action action = Action::Outside;
@@ -63,10 +63,13 @@ public:
     [[nodiscard]] const std::vector<Cell>& cells() const noexcept { return m_cells; }
     [[nodiscard]] const Cell* find(const QString& serial) const;
     [[nodiscard]] QStringList serials() const;
+    bool reorder(const QStringList& order);
     bool setAspect(const QString& serial, double aspect);
     bool setLabel(const QString& serial, const QString& name, const QString& tone, const QString& status);
+    bool setRemark(const QString& serial, const QString& remark);
     bool setRate(const QString& serial, double framesPerSecond);
     bool setSync(const QString& serial, const Sync& sync);
+    bool setChecked(const QString& serial, bool checked);
     bool setSeparate(const QString& serial, bool separate);
     [[nodiscard]] const QString& target() const noexcept { return m_target; }
     bool setTarget(const QString& serial);
@@ -82,15 +85,13 @@ private:
         QString serial;
         QPointF at;
         std::int64_t timeMs = 0;
-        bool header = false;
-        bool selecting = false;
+        bool view = false;
     };
 
     [[nodiscard]] Cell* cellOf(const QString& serial);
     [[nodiscard]] std::vector<GridItem> items(const Metrics& metrics) const;
     [[nodiscard]] bool repeats(const QString& serial, QPointF at, Qt::MouseButton button, std::int64_t timeMs) const;
-    void remember(const Cell& cell, QPointF at, Qt::MouseButton button, std::int64_t timeMs, bool header,
-                  bool selecting);
+    void remember(const Cell& cell, QPointF at, Qt::MouseButton button, std::int64_t timeMs, bool view);
 
     std::vector<Cell> m_cells;
     QString m_target;

@@ -1130,5 +1130,6 @@ Window {
         if (CrashReport.pending)
             crashToast.open()
         Qt.callLater(root.playWaitingTour)
+        Qt.callLater(() => DeviceManager.showGrid())
     }
 }

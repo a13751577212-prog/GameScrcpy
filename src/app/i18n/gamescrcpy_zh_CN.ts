@@ -7519,8 +7519,40 @@
         <translation>键鼠给：%1</translation>
     </message>
     <message>
-        <source>Click a cell to give it the keys and mouse</source>
-        <translation>点一格把键鼠交给它</translation>
+        <source>Click a cell to toggle whether it follows</source>
+        <translation>点一格切换它是否跟随</translation>
+    </message>
+    <message>
+        <source>Select all</source>
+        <translation>全选</translation>
+    </message>
+    <message>
+        <source>Select none</source>
+        <translation>全不选</translation>
+    </message>
+    <message>
+        <source>Number or name</source>
+        <translation>序号或备注</translation>
+    </message>
+    <message>
+        <source>Make this the master</source>
+        <translation>设为主控设备</translation>
+    </message>
+    <message>
+        <source>Stop being the master</source>
+        <translation>取消主控</translation>
+    </message>
+    <message>
+        <source>Recent apps</source>
+        <translation>最近任务</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>返回</translation>
+    </message>
+    <message>
+        <source>Home</source>
+        <translation>主页</translation>
     </message>
     <message>
         <source>Let go of the keys and mouse</source>
