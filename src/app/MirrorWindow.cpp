@@ -62,6 +62,20 @@ bool toolbarOnRightSetting()
                   != QStringLiteral("top");
 }
 
+double mirrorWindowShare()
+{
+    const AppSettings* settings = AppSettings::instance();
+    const QVariant value = settings != nullptr
+                               ? settings->values().value(QStringLiteral("display.mirrorWindowShare"))
+                               : QVariant{};
+    bool ok = false;
+    const int percent = value.toInt(&ok);
+    if (!ok || percent < 40 || percent > 100) {
+        return kScreenShare;
+    }
+    return static_cast<double>(percent) / 100.0;
+}
+
 }
 
 MirrorWindow::MirrorWindow(const render::GraphicsDevice& graphics, std::shared_ptr<render::FrameSlot> frames,
@@ -111,8 +125,10 @@ MirrorWindow::MirrorWindow(const render::GraphicsDevice& graphics, std::shared_p
     connect(&m_clipGuard, &QTimer::timeout, this, &MirrorWindow::keepClip);
     QCoreApplication::instance()->installNativeEventFilter(this);
     m_toolbarOnRight = toolbarOnRightSetting();
+    m_share = mirrorWindowShare();
     if (AppSettings* settings = AppSettings::instance(); settings != nullptr) {
         connect(settings, &AppSettings::valuesChanged, this, &MirrorWindow::followToolbarSide);
+        connect(settings, &AppSettings::valuesChanged, this, &MirrorWindow::followShare);
     }
     resize(360, 720);
 }
@@ -1082,7 +1098,7 @@ void MirrorWindow::setMini(bool on)
             setGeometry(m_miniRestore);
         } else if (screen() != nullptr && m_aspect > 0) {
             const QRect area = screen()->availableGeometry();
-            const qreal height = std::min(area.height() * kScreenShare, area.width() * kScreenShare / m_aspect);
+            const qreal height = std::min(area.height() * m_share, area.width() * m_share / m_aspect);
             const QSize fitted(qRound(height * m_aspect), qRound(height));
             setGeometry(QRect(area.center() - QPoint(fitted.width() / 2, fitted.height() / 2), fitted));
         }
@@ -1352,9 +1368,20 @@ void MirrorWindow::fitToPicture()
     const int top = reservedTop();
     const int right = reservedRight();
     const int bottom = reservedBottom();
-    const QSizeF available = screen()->availableGeometry().size() * kScreenShare;
+    const QSizeF available = screen()->availableGeometry().size() * m_share;
     const qreal height = std::min(available.height() - top - bottom, (available.width() - right) / aspect);
     resize(qRound(height * aspect) + right, qRound(height) + top + bottom);
+}
+
+void MirrorWindow::followShare()
+{
+    const double share = mirrorWindowShare();
+    if (qFuzzyCompare(share, m_share)) {
+        return;
+    }
+    m_share = share;
+    m_aspect = 0;
+    fitToPicture();
 }
 
 }

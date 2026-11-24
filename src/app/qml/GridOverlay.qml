@@ -14,11 +14,12 @@ Item {
     readonly property var chosen: overlay.cells.find(entry => entry.master === true) ?? null
     readonly property real topInset: titleBar.height + toolbar.height
     readonly property int footerHeight: Theme.size.control
-    readonly property int edge: Theme.size.gridEdge
+    readonly property int edge: Theme.size.gridHit
     readonly property int gap: Theme.space.sm
     readonly property int margin: Theme.space.sm
     readonly property int inset: Theme.size.focusRing
     readonly property bool popupOpen: cellMenu.visible || syncDialog.visible || remarkEdit.visible
+                                      || sizePanel.visible
     readonly property rect noticeArea: notice.visible ? Qt.rect(notice.x, notice.y, notice.width, notice.height)
                                                       : Qt.rect(0, 0, 0, 0)
     readonly property var syncHues: ["azure", "teal", "rose", "lime", "amber", "orange"].filter(
@@ -166,6 +167,13 @@ Item {
         target: cellMenu.serial
     }
 
+    CommandState {
+        id: screenMenuCommand
+
+        command: "device.screenOff"
+        target: cellMenu.serial
+    }
+
     Item {
         id: titleBar
 
@@ -174,15 +182,52 @@ Item {
         anchors.top: parent.top
         height: minimizeButton.implicitHeight
 
-        Icon {
+        T.AbstractButton {
             id: titleIcon
 
+            objectName: "gridWindowSize"
             anchors.left: parent.left
-            anchors.leftMargin: Theme.space.md + Theme.space.xxs
+            anchors.leftMargin: Theme.space.md
             anchors.verticalCenter: parent.verticalCenter
-            name: "layout-grid"
-            size: Theme.size.iconSmall
-            color: Theme.colors.textTertiary
+            width: Theme.size.controlSmall
+            height: Theme.size.controlSmall
+            hoverEnabled: true
+            focusPolicy: Qt.TabFocus
+            text: qsTr("Window sizes")
+            Accessible.name: text
+            onClicked: sizePanel.visible ? sizePanel.close() : sizePanel.open()
+
+            Tooltip {
+                y: titleIcon.height + Theme.space.xs
+                text: titleIcon.text
+                visible: titleIcon.hovered && !titleIcon.down
+            }
+
+            contentItem: Icon {
+                anchors.centerIn: parent
+                name: "layout-grid"
+                size: Theme.size.iconSmall
+                color: titleIcon.hovered ? Theme.colors.textPrimary : Theme.colors.textTertiary
+            }
+
+            background: Rectangle {
+                id: sizeFace
+
+                radius: Theme.radius.xs
+                color: "transparent"
+
+                StateLayer {
+                    anchors.fill: parent
+                    radius: sizeFace.radius
+                    hovered: titleIcon.hovered
+                    pressed: titleIcon.down
+                }
+
+                FocusRing {
+                    visible: titleIcon.visualFocus
+                    baseRadius: sizeFace.radius
+                }
+            }
         }
 
         Text {
@@ -292,7 +337,7 @@ Item {
                 width: Math.max(0, (who.aimed ? release.x - Theme.space.xs : who.width - Theme.space.md) - x)
                 textFormat: Text.PlainText
                 text: who.aimed ? qsTr("Sync master: %1").arg(overlay.chosen.name)
-                                : qsTr("Click a frame to toggle following")
+                                : qsTr("Click a frame or the link to toggle following")
                 elide: Text.ElideRight
                 color: who.aimed ? Theme.colors.accentText : Theme.colors.textSecondary
                 font.pixelSize: Theme.type.label.size
@@ -484,6 +529,7 @@ Item {
         property string iconName
         property string tip
         property bool selected: false
+        property bool info: false
 
         width: Theme.size.controlSmall
         height: Theme.size.controlSmall
@@ -502,13 +548,15 @@ Item {
             name: button.iconName
             size: Theme.size.iconSmall
             color: !button.enabled ? Theme.colors.textTertiary
+                 : button.info ? Theme.colors.info
                  : button.selected ? Theme.colors.accentText
                  : button.hovered ? Theme.colors.textPrimary : Theme.colors.textSecondary
         }
 
         background: Rectangle {
             radius: Theme.radius.xs
-            color: button.selected ? Theme.colors.accentSubtle
+            color: button.info ? Theme.colors.infoSubtle
+                 : button.selected ? Theme.colors.accentSubtle
                  : button.hovered ? Theme.colors.statePress : "transparent"
         }
     }
@@ -536,13 +584,14 @@ Item {
             CommandState { id: backCommand; command: "device.back"; target: cell.entry.serial ?? "" }
             CommandState { id: homeCommand; command: "device.home"; target: cell.entry.serial ?? "" }
             CommandState { id: recentCommand; command: "device.appSwitch"; target: cell.entry.serial ?? "" }
+            CommandState { id: screenCommand; command: "device.screenOff"; target: cell.entry.serial ?? "" }
 
             Rectangle {
                 objectName: "gridFrame"
                 anchors.fill: parent
                 radius: Theme.radius.lg
                 color: Theme.colors.bgRaised
-                border.width: overlay.edge + (cell.chosen ? Theme.size.edgeLine : 0)
+                border.width: Theme.size.gridEdge + (cell.chosen ? Theme.size.edgeLine : 0)
                 border.color: cell.chosen ? Theme.colors.accent
                             : cell.following ? Theme.colors.info : Theme.colors.strokeSubtle
             }
@@ -595,8 +644,8 @@ Item {
 
                     anchors.left: parent.left
                     anchors.leftMargin: Theme.space.md + Theme.size.pillDot + Theme.space.sm
-                    anchors.right: buttonRow.left
-                    anchors.rightMargin: Theme.space.xs
+                    anchors.right: followButton.left
+                    anchors.rightMargin: Theme.space.sm
                     anchors.verticalCenter: parent.verticalCenter
                     height: Math.max(0, overlay.footerHeight - 2 * Theme.space.xxs)
 
@@ -604,13 +653,14 @@ Item {
                         id: nameText
 
                         objectName: "gridName"
-                        anchors.fill: parent
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.max(0, Math.min(implicitWidth, labelArea.width
+                                     - (screenButton.visible ? screenButton.width + Theme.space.xs : 0)))
                         textFormat: Text.PlainText
                         text: {
                             const remark = cell.entry.remark ?? ""
-                            const label = remark !== "" ? remark : (cell.entry.name ?? "")
-                            const fps = cell.away ? "" : cell.rate >= 0 ? " · " + qsTr("%1 fps").arg(cell.rate) : ""
-                            return label + fps
+                            return remark !== "" ? remark : (cell.entry.name ?? "")
                         }
                         elide: Text.ElideRight
                         verticalAlignment: Text.AlignVCenter
@@ -620,10 +670,40 @@ Item {
                     }
 
                     MouseArea {
-                        anchors.fill: parent
+                        anchors.fill: nameText
                         acceptedButtons: Qt.LeftButton
                         onDoubleClicked: overlay.editRemark(cell.entry.serial ?? "", labelArea)
                     }
+
+                    CellButton {
+                        id: screenButton
+
+                        objectName: "gridScreen"
+                        visible: !cell.narrow
+                        x: Math.max(0, Math.min(nameText.width + Theme.space.xs,
+                                   labelArea.width - width))
+                        anchors.verticalCenter: parent.verticalCenter
+                        iconName: "power"
+                        tip: screenCommand.title
+                        enabled: screenCommand.enabled
+                        selected: screenCommand.checked
+                        onClicked: DeviceManager.gridScreen(cell.entry.serial ?? "", !screenCommand.checked)
+                    }
+                }
+
+                CellButton {
+                    id: followButton
+
+                    objectName: "gridFollowToggle"
+                    visible: !cell.chosen
+                    anchors.right: buttonRow.left
+                    anchors.rightMargin: Theme.space.md
+                    anchors.verticalCenter: parent.verticalCenter
+                    iconName: "link"
+                    info: cell.following
+                    tip: cell.following ? qsTr("Stop following the master")
+                                        : qsTr("Follow the master")
+                    onClicked: DeviceManager.toggleGridFollow(cell.entry.serial ?? "")
                 }
 
                 Row {
@@ -739,6 +819,93 @@ Item {
         }
     }
 
+    T.Popup {
+        id: sizePanel
+
+        objectName: "gridSizePanel"
+        x: Theme.space.md
+        y: titleBar.height + Theme.space.xs
+        padding: Theme.space.md
+        modal: true
+        dim: false
+        background: PopupSurface {}
+
+        contentItem: Column {
+            spacing: Theme.space.md
+
+            Text {
+                text: qsTr("Window sizes")
+                textFormat: Text.PlainText
+                color: Theme.colors.textPrimary
+                font.pixelSize: Theme.type.label.size
+                font.weight: Font.DemiBold
+            }
+
+            Column {
+                spacing: Theme.space.xs
+
+                Text {
+                    text: qsTr("Grid window size")
+                    textFormat: Text.PlainText
+                    color: Theme.colors.textSecondary
+                    font.pixelSize: Theme.type.caption.size
+                }
+
+                Slider {
+                    id: gridSizeSlider
+
+                    from: 40
+                    to: 100
+                    stepSize: 5
+                    valueText: Math.round(value) + "%"
+                    onMoved: AppSettings.setValue("display.gridWindowShare", Math.round(value))
+
+                    Binding {
+                        target: gridSizeSlider
+                        property: "value"
+                        value: AppSettings.values["display.gridWindowShare"] ?? 80
+                    }
+                }
+            }
+
+            Column {
+                spacing: Theme.space.xs
+
+                Text {
+                    text: qsTr("Mirror window size")
+                    textFormat: Text.PlainText
+                    color: Theme.colors.textSecondary
+                    font.pixelSize: Theme.type.caption.size
+                }
+
+                Slider {
+                    id: mirrorSizeSlider
+
+                    from: 40
+                    to: 100
+                    stepSize: 5
+                    valueText: Math.round(value) + "%"
+                    onMoved: AppSettings.setValue("display.mirrorWindowShare", Math.round(value))
+
+                    Binding {
+                        target: mirrorSizeSlider
+                        property: "value"
+                        value: AppSettings.values["display.mirrorWindowShare"] ?? 85
+                    }
+                }
+            }
+
+            Text {
+                width: Math.max(gridSizeSlider.implicitWidth, mirrorSizeSlider.implicitWidth)
+                text: qsTr("Kept after a restart. Open windows change at once.")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: Theme.colors.textTertiary
+                font.pixelSize: Theme.type.caption.size
+            }
+        }
+    }
+
     Menu {
         id: cellMenu
 
@@ -761,6 +928,15 @@ Item {
         CommandMenuItem {
             objectName: "gridMenuMute"
             commandState: muteCommand
+        }
+
+        MenuItem {
+            objectName: "gridMenuScreen"
+            visible: (cellMenu.entry?.width ?? 9999) < 300
+            iconName: "power"
+            text: screenMenuCommand.title
+            enabled: screenMenuCommand.enabled
+            onTriggered: DeviceManager.gridScreen(cellMenu.serial, !screenMenuCommand.checked)
         }
 
         MenuItem {

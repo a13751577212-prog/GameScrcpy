@@ -7519,8 +7519,8 @@
         <translation>同步主控：%1</translation>
     </message>
     <message>
-        <source>Click a frame to toggle following</source>
-        <translation>点边框切换跟随</translation>
+        <source>Click a frame or the link to toggle following</source>
+        <translation>点边框或链接按钮切换是否跟随</translation>
     </message>
     <message>
         <source>Select all</source>
@@ -7601,6 +7601,30 @@
     <message>
         <source>No phone is mirroring</source>
         <translation>没有正在投屏的手机</translation>
+    </message>
+    <message>
+        <source>Window sizes</source>
+        <translation>窗口尺寸</translation>
+    </message>
+    <message>
+        <source>Grid window size</source>
+        <translation>群控窗口尺寸</translation>
+    </message>
+    <message>
+        <source>Mirror window size</source>
+        <translation>独立窗口尺寸</translation>
+    </message>
+    <message>
+        <source>Kept after a restart. Open windows change at once.</source>
+        <translation>重启后保留，已打开的窗口立即生效。</translation>
+    </message>
+    <message>
+        <source>Stop following the master</source>
+        <translation>取消跟随主控</translation>
+    </message>
+    <message>
+        <source>Follow the master</source>
+        <translation>跟随主控</translation>
     </message>
 </context>
 <context>
@@ -11400,6 +11424,14 @@
     <message>
         <source>Rest the pointer at the right side to show the toolbar</source>
         <translation>把指针停在右侧可显示工具栏</translation>
+    </message>
+    <message>
+        <source>Make this the master</source>
+        <translation>设为主控设备</translation>
+    </message>
+    <message>
+        <source>Stop being the master</source>
+        <translation>取消主控</translation>
     </message>
 </context>
 <context>
@@ -18855,6 +18887,30 @@
     <message>
         <source>toolbar position side right top vertical horizontal</source>
         <translation>工具栏 位置 右侧 顶部 竖向 横向</translation>
+    </message>
+    <message>
+        <source>Grid window size</source>
+        <translation>群控窗口尺寸</translation>
+    </message>
+    <message>
+        <source>How much of the screen the multi-device window takes when it opens, kept after a restart. Also reachable from the top left of that window.</source>
+        <translation>多设备宫格窗口打开时占屏幕的比例，重启后保留。也可以在该窗口左上角调整。</translation>
+    </message>
+    <message>
+        <source>grid group window size share screen percent restart</source>
+        <translation>群控 宫格 窗口 尺寸 比例 屏幕 百分比 重启</translation>
+    </message>
+    <message>
+        <source>Mirror window size</source>
+        <translation>独立窗口尺寸</translation>
+    </message>
+    <message>
+        <source>How much of the screen a separate mirror window takes when it opens, kept after a restart.</source>
+        <translation>单独打开的投屏窗口占屏幕的比例，重启后保留。</translation>
+    </message>
+    <message>
+        <source>mirror separate window size share screen percent restart</source>
+        <translation>独立 窗口 尺寸 比例 屏幕 百分比 重启</translation>
     </message>
 </context>
 <context>

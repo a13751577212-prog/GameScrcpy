@@ -151,6 +151,7 @@ class DeviceManager : public QAbstractListModel
     Q_PROPERTY(QStringList onlineSerials READ onlineSerials NOTIFY countsChanged FINAL)
     Q_PROPERTY(QVariantMap leadDevice READ leadDevice NOTIFY countsChanged FINAL)
     Q_PROPERTY(QVariantList mirrors READ mirrors NOTIFY mirrorsChanged FINAL)
+    Q_PROPERTY(QString gridMasterSerial READ gridMasterSerial NOTIFY gridMasterChanged FINAL)
     Q_PROPERTY(QVariantList taskRuns READ taskRuns NOTIFY taskRunsChanged FINAL)
     Q_PROPERTY(QVariantList taskHistory READ taskHistory NOTIFY taskRunsChanged FINAL)
     Q_PROPERTY(gs::app::DeviceBatch* batch READ batch CONSTANT FINAL)
@@ -346,10 +347,12 @@ public:
 
     Q_INVOKABLE QString deviceRemark(const QString& serial) const;
     Q_INVOKABLE void setDeviceRemark(const QString& serial, const QString& text);
+    [[nodiscard]] QString gridMasterSerial() const noexcept { return m_gridMaster; }
     Q_INVOKABLE void setGridMaster(const QString& serial);
     Q_INVOKABLE void toggleGridFollow(const QString& serial);
     Q_INVOKABLE void setGridFollowAll(bool on);
     Q_INVOKABLE void gridNavigation(const QString& serial, const QString& command);
+    Q_INVOKABLE void gridScreen(const QString& serial, bool off);
     Q_INVOKABLE void setAutoMirror(bool on);
     Q_INVOKABLE bool autoMirror() const noexcept { return m_autoMirror; }
 
@@ -413,6 +416,7 @@ signals:
     void backgroundsChanged();
     void extensionStopped(const QString& name);
     void linkRevisionChanged();
+    void gridMasterChanged();
     void phoneSuggested(int ticket, const QString& captureSerial, const QString& deviceId, double score);
 
 private:

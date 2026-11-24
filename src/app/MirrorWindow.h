@@ -152,6 +152,7 @@ public slots:
 private slots:
     void followPinnedBar();
     void followToolbarSide();
+    void followShare();
     void followPhoneHints();
 
 protected:
@@ -196,6 +197,7 @@ private:
     MirrorInputItem* m_pointer;
     QPointer<QQuickItem> m_overlay;
     qreal m_aspect = 0;
+    double m_share = 0.85;
     bool m_fullScreen = false;
     bool m_toolbarPinned = false;
     bool m_toolbarPinnedRequest = false;

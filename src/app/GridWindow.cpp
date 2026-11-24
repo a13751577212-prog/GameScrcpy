@@ -1,5 +1,6 @@
 #include "GridWindow.h"
 
+#include "AppSettings.h"
 #include "MirrorInputItem.h"
 
 #include <gs/platform/Cursor.h>
@@ -35,12 +36,25 @@ constexpr qreal kOverlayZ = -1;
 constexpr qreal kVideoZ = 0;
 constexpr qreal kHintsZ = 0.5;
 constexpr qreal kPointerZ = 1;
-constexpr qreal kScreenShare = 0.85;
-constexpr double kFitShare = 0.8;
+constexpr double kDefaultGridShare = 0.8;
 constexpr int kSizeSlack = 2;
 constexpr int kLeastWidth = 480;
 constexpr int kLeastHeight = 320;
 constexpr std::chrono::milliseconds kClipCheck{100};
+
+double gridWindowShare()
+{
+    const AppSettings* settings = AppSettings::instance();
+    const QVariant value = settings != nullptr
+                               ? settings->values().value(QStringLiteral("display.gridWindowShare"))
+                               : QVariant{};
+    bool ok = false;
+    const int percent = value.toInt(&ok);
+    if (!ok || percent < 40 || percent > 100) {
+        return kDefaultGridShare;
+    }
+    return static_cast<double>(percent) / 100.0;
+}
 
 void setChanged(QObject& item, const char* name, const QVariant& value)
 {
@@ -56,12 +70,16 @@ GridWindow::GridWindow(const render::GraphicsDevice& graphics)
     graphics.share(*this);
     setColor(Qt::black);
     setMinimumSize(QSize(kLeastWidth, kLeastHeight));
+    m_share = gridWindowShare();
+    if (AppSettings* settings = AppSettings::instance(); settings != nullptr) {
+        connect(settings, &AppSettings::valuesChanged, this, &GridWindow::followShare);
+    }
     if (const QStyleHints* hints = QGuiApplication::styleHints(); hints != nullptr) {
         m_cells.setDoubleClick(hints->mouseDoubleClickInterval(), hints->mouseDoubleClickDistance());
     }
     if (const QScreen* primary = QGuiApplication::primaryScreen(); primary != nullptr) {
         const QRect area = primary->availableGeometry();
-        const QSize wanted(qRound(area.width() * kScreenShare), qRound(area.height() * kScreenShare));
+        const QSize wanted(qRound(area.width() * m_share), qRound(area.height() * m_share));
         setGeometry(QRect(area.center() - QPoint(wanted.width() / 2, wanted.height() / 2), wanted));
     }
     m_clipGuard.setInterval(kClipCheck);
@@ -606,7 +624,7 @@ void GridWindow::fitToCells()
         return;
     }
     const QRect area = where->availableGeometry();
-    const QSize grid = m_cells.windowSize(area.size(), m_top, m_metrics, kFitShare);
+    const QSize grid = m_cells.windowSize(area.size(), m_top, m_metrics, m_share);
     m_fitted = key;
     if (grid.isEmpty()) {
         return;
@@ -619,6 +637,19 @@ void GridWindow::fitToCells()
     m_placed = true;
     setGeometry(placed);
     m_fitSize = size();
+}
+
+void GridWindow::followShare()
+{
+    const double share = gridWindowShare();
+    if (qFuzzyCompare(share, m_share)) {
+        return;
+    }
+    m_share = share;
+    m_userSized = false;
+    m_fitSize = QSize();
+    m_fitted = Fit{};
+    fitToCells();
 }
 
 void GridWindow::followFrame(const QString& serial)

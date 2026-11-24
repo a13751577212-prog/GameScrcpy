@@ -1178,6 +1178,18 @@ Item {
 
         ToolbarSeparator { visible: !overlay.toolbarOnRight }
 
+        ToolbarButton {
+            id: masterButton
+
+            readonly property bool isMaster: DeviceManager.gridMasterSerial === overlay.serial
+
+            objectName: "mirrorMaster"
+            iconName: "paw-print"
+            text: isMaster ? qsTr("Stop being the master") : qsTr("Make this the master")
+            selected: isMaster
+            onClicked: DeviceManager.setGridMaster(overlay.serial)
+        }
+
         CommandButton { id: backButton; commandState: backCommand; fallbackIcon: "arrow-left" }
         CommandButton { id: homeButton; commandState: homeCommand; fallbackIcon: "house" }
         CommandButton { id: appSwitchButton; commandState: appSwitchCommand; fallbackIcon: "square" }

@@ -3364,6 +3364,7 @@ void DeviceManager::setGridMaster(const QString& serial)
         }
         foregroundChanged();
         applyFollowSelection();
+        emit gridMasterChanged();
         return;
     }
     if (!m_gridMaster.isEmpty()) {
@@ -3375,6 +3376,7 @@ void DeviceManager::setGridMaster(const QString& serial)
     }
     foregroundChanged();
     applyFollowSelection();
+    emit gridMasterChanged();
 }
 
 void DeviceManager::toggleGridFollow(const QString& serial)
@@ -3719,6 +3721,22 @@ void DeviceManager::gridNavigation(const QString& serial, const QString& command
     for (const QString& follower : m_sync.followersOf(serial)) {
         if (indexOf(follower) >= 0) {
             pressKey(follower, keycode);
+        }
+    }
+}
+
+void DeviceManager::gridScreen(const QString& serial, bool off)
+{
+    if (indexOf(serial) < 0) {
+        return;
+    }
+    setScreenOff(serial, off);
+    if (m_gridMaster.isEmpty() || serial != m_gridMaster) {
+        return;
+    }
+    for (const QString& follower : m_sync.followersOf(serial)) {
+        if (indexOf(follower) >= 0) {
+            setScreenOff(follower, off);
         }
     }
 }

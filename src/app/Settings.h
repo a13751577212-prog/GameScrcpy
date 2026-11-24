@@ -208,6 +208,8 @@ struct Display {
     TitleBarMode titleBar = TitleBarMode::Fixed;
     ToolbarMode toolbar = ToolbarMode::Pinned;
     ToolbarSide toolbarSide = ToolbarSide::Right;
+    std::int32_t gridWindowShare = 80;
+    std::int32_t mirrorWindowShare = 85;
     StatusCapsule statusCapsule = StatusCapsule::Auto;
     bool phoneStatus = false;
     bool cameraGlow = true;
@@ -253,6 +255,19 @@ struct Display {
                                                                 "or across its top. Open mirror windows change at once."),
                   .keywords = GS_TRANSLATE_NOOP("Settings", "toolbar position side right top vertical horizontal"),
                   .live = true});
+        v.integer("gridWindowShare", m.gridWindowShare, 40, 100,
+                  {.title = GS_TRANSLATE_NOOP("Settings", "Grid window size"),
+                   .description = GS_TRANSLATE_NOOP("Settings", "How much of the screen the multi-device window takes "
+                                                                "when it opens, kept after a restart. Also reachable "
+                                                                "from the top left of that window."),
+                   .keywords = GS_TRANSLATE_NOOP("Settings", "grid group window size share screen percent restart"),
+                   .live = true});
+        v.integer("mirrorWindowShare", m.mirrorWindowShare, 40, 100,
+                  {.title = GS_TRANSLATE_NOOP("Settings", "Mirror window size"),
+                   .description = GS_TRANSLATE_NOOP("Settings", "How much of the screen a separate mirror window takes "
+                                                                "when it opens, kept after a restart."),
+                   .keywords = GS_TRANSLATE_NOOP("Settings", "mirror separate window size share screen percent restart"),
+                   .live = true});
         v.choice("statusCapsule", m.statusCapsule, kStatusCapsuleNames,
                  {.title = GS_TRANSLATE_NOOP("Settings", "Status capsule"),
                   .description = GS_TRANSLATE_NOOP("Settings", "Shows the frame rate, delay and connection method in "

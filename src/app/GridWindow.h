@@ -129,6 +129,7 @@ private:
     [[nodiscard]] Fit fitWanted() const;
     void scheduleFit();
     void fitToCells();
+    void followShare();
     void followFrame(const QString& serial);
     void targetChanged();
     void focusTarget();
@@ -155,6 +156,7 @@ private:
     QString m_wheelSerial;
     QVariantMap m_wheel;
     GridCells::Metrics m_metrics;
+    double m_share = 0.8;
     int m_top = 40;
     bool m_layoutQueued = false;
     Fit m_fitted;
