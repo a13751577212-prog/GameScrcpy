@@ -117,6 +117,8 @@ Item {
                 return
             chrome.window = overlay.Window.window
             chromeAttached = chrome.attach()
+            if (chromeAttached)
+                chrome.setHitTestVisible(titleIcon, true)
         }
     }
 
@@ -168,9 +170,23 @@ Item {
     }
 
     CommandState {
-        id: screenMenuCommand
+        id: menuFollowCommand
 
-        command: "device.screenOff"
+        command: "device.orientation.follow"
+        target: cellMenu.serial
+    }
+
+    CommandState {
+        id: menuPortraitCommand
+
+        command: "device.orientation.portrait"
+        target: cellMenu.serial
+    }
+
+    CommandState {
+        id: menuLandscapeCommand
+
+        command: "device.orientation.landscape"
         target: cellMenu.serial
     }
 
@@ -182,52 +198,18 @@ Item {
         anchors.top: parent.top
         height: minimizeButton.implicitHeight
 
-        T.AbstractButton {
+        Button {
             id: titleIcon
 
             objectName: "gridWindowSize"
             anchors.left: parent.left
             anchors.leftMargin: Theme.space.md
             anchors.verticalCenter: parent.verticalCenter
-            width: Theme.size.controlSmall
-            height: Theme.size.controlSmall
-            hoverEnabled: true
-            focusPolicy: Qt.TabFocus
+            small: true
+            tone: "ghost"
+            iconName: "layout-grid"
             text: qsTr("Window sizes")
-            Accessible.name: text
             onClicked: sizePanel.visible ? sizePanel.close() : sizePanel.open()
-
-            Tooltip {
-                y: titleIcon.height + Theme.space.xs
-                text: titleIcon.text
-                visible: titleIcon.hovered && !titleIcon.down
-            }
-
-            contentItem: Icon {
-                anchors.centerIn: parent
-                name: "layout-grid"
-                size: Theme.size.iconSmall
-                color: titleIcon.hovered ? Theme.colors.textPrimary : Theme.colors.textTertiary
-            }
-
-            background: Rectangle {
-                id: sizeFace
-
-                radius: Theme.radius.xs
-                color: "transparent"
-
-                StateLayer {
-                    anchors.fill: parent
-                    radius: sizeFace.radius
-                    hovered: titleIcon.hovered
-                    pressed: titleIcon.down
-                }
-
-                FocusRing {
-                    visible: titleIcon.visualFocus
-                    baseRadius: sizeFace.radius
-                }
-            }
         }
 
         Text {
@@ -404,6 +386,17 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.space.sm
 
+            Button {
+                objectName: "gridSettings"
+                anchors.verticalCenter: parent.verticalCenter
+                small: true
+                tone: "ghost"
+                iconName: "settings-2"
+                text: ""
+                toolTip: qsTr("Settings")
+                onClicked: AiAssistant.openSettings()
+            }
+
             Checkbox {
                 id: selectAll
 
@@ -529,7 +522,6 @@ Item {
         property string iconName
         property string tip
         property bool selected: false
-        property bool info: false
 
         width: Theme.size.controlSmall
         height: Theme.size.controlSmall
@@ -548,16 +540,13 @@ Item {
             name: button.iconName
             size: Theme.size.iconSmall
             color: !button.enabled ? Theme.colors.textTertiary
-                 : button.info ? Theme.colors.info
                  : button.selected ? Theme.colors.accentText
                  : button.hovered ? Theme.colors.textPrimary : Theme.colors.textSecondary
         }
 
         background: Rectangle {
             radius: Theme.radius.xs
-            color: button.info ? Theme.colors.infoSubtle
-                 : button.selected ? Theme.colors.accentSubtle
-                 : button.hovered ? Theme.colors.statePress : "transparent"
+            color: button.hovered ? Theme.colors.statePress : "transparent"
         }
     }
 
@@ -574,6 +563,7 @@ Item {
             readonly property real rate: entry.rate ?? -1
             readonly property bool following: !chosen && !away && entry.checked === true
             readonly property bool narrow: width < 300
+            readonly property real middleGap: Theme.size.controlSmall * 2 + Theme.space.md
 
             objectName: "gridCell"
             x: entry.x ?? 0
@@ -587,13 +577,55 @@ Item {
             CommandState { id: screenCommand; command: "device.screenOff"; target: cell.entry.serial ?? "" }
 
             Rectangle {
+                id: gridFrame
+
+                readonly property color edge: cell.chosen ? Theme.colors.accent
+                                           : cell.following ? Theme.colors.info : Theme.colors.strokeSubtle
+                readonly property bool marked: cell.chosen || cell.following
+
                 objectName: "gridFrame"
                 anchors.fill: parent
                 radius: Theme.radius.lg
                 color: Theme.colors.bgRaised
-                border.width: Theme.size.gridEdge + (cell.chosen ? Theme.size.edgeLine : 0)
-                border.color: cell.chosen ? Theme.colors.accent
-                            : cell.following ? Theme.colors.info : Theme.colors.strokeSubtle
+                border.width: Theme.size.stroke
+                border.color: gridFrame.edge
+            }
+
+            Repeater {
+                model: gridFrame.marked ? 4 : 0
+
+                delegate: Item {
+                    id: corner
+
+                    required property int index
+                    readonly property real len: Theme.space.sm + Theme.space.xxs
+                    readonly property real line: Theme.size.edgeLine
+                    readonly property real offset: overlay.inset + Theme.space.xxs
+                    readonly property bool right: index === 1 || index === 2
+                    readonly property bool bottom: index === 2 || index === 3
+
+                    x: corner.right ? cell.width - corner.offset - corner.len : corner.offset
+                    y: corner.bottom ? cell.height - corner.offset - corner.len : corner.offset
+                    width: corner.len
+                    height: corner.len
+                    z: 2
+
+                    Rectangle {
+                        x: 0
+                        y: corner.bottom ? corner.len - corner.line : 0
+                        width: corner.len
+                        height: corner.line
+                        color: gridFrame.edge
+                    }
+
+                    Rectangle {
+                        x: corner.right ? corner.len - corner.line : 0
+                        y: 0
+                        width: corner.line
+                        height: corner.len
+                        color: gridFrame.edge
+                    }
+                }
             }
 
             Rectangle {
@@ -644,8 +676,8 @@ Item {
 
                     anchors.left: parent.left
                     anchors.leftMargin: Theme.space.md + Theme.size.pillDot + Theme.space.sm
-                    anchors.right: followButton.left
-                    anchors.rightMargin: Theme.space.sm
+                    anchors.right: buttonRow.left
+                    anchors.rightMargin: cell.middleGap
                     anchors.verticalCenter: parent.verticalCenter
                     height: Math.max(0, overlay.footerHeight - 2 * Theme.space.xxs)
 
@@ -686,24 +718,35 @@ Item {
                         iconName: "power"
                         tip: screenCommand.title
                         enabled: screenCommand.enabled
-                        selected: screenCommand.checked
                         onClicked: DeviceManager.gridScreen(cell.entry.serial ?? "", !screenCommand.checked)
                     }
                 }
 
-                CellButton {
-                    id: followButton
+                Item {
+                    id: midArea
 
-                    objectName: "gridFollowToggle"
-                    visible: !cell.chosen
+                    anchors.left: labelArea.right
+                    anchors.leftMargin: Theme.space.xs
                     anchors.right: buttonRow.left
-                    anchors.rightMargin: Theme.space.md
+                    anchors.rightMargin: Theme.space.xs
                     anchors.verticalCenter: parent.verticalCenter
-                    iconName: "link"
-                    info: cell.following
-                    tip: cell.following ? qsTr("Stop following the master")
-                                        : qsTr("Follow the master")
-                    onClicked: DeviceManager.toggleGridFollow(cell.entry.serial ?? "")
+                    height: parent.height
+
+                    MouseArea {
+                        id: midClick
+
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton
+                        onClicked: DeviceManager.toggleGridFollow(cell.entry.serial ?? "")
+
+                        Tooltip {
+                            y: -Theme.size.tooltip
+                            text: cell.following ? qsTr("Stop following the master")
+                                                 : qsTr("Follow the master")
+                            visible: midClick.containsMouse && !midClick.pressed
+                        }
+                    }
                 }
 
                 Row {
@@ -910,43 +953,67 @@ Item {
         id: cellMenu
 
         property string serial
-        readonly property var entry: overlay.cellOf(cellMenu.serial)
-        readonly property string syncRole: cellMenu.entry?.syncRole ?? ""
-        readonly property int followers: cellMenu.entry?.syncCount ?? 0
 
         objectName: "gridCellMenu"
         modal: true
         dim: false
 
         MenuItem {
-            objectName: "gridMenuOwnWindow"
-            iconName: "popout"
-            text: qsTr("Open in its own window")
-            onTriggered: DeviceManager.showWindow(cellMenu.serial)
+            objectName: "gridMenuVolume"
+            iconName: muteCommand.checked ? "volume-x" : "volume-2"
+            text: qsTr("Volume")
+            description: muteCommand.checked ? qsTr("Muted") : qsTr("Sound on")
+            enabled: muteCommand.enabled
+            onTriggered: muteCommand.trigger()
+        }
+
+        MenuSeparator {}
+
+        Item {
+            implicitWidth: orientationLabel.implicitWidth + 2 * (Theme.space.sm + Theme.space.xxs)
+            implicitHeight: Theme.size.pill + Theme.space.xs
+            height: visible ? implicitHeight : 0
+            visible: menuFollowCommand.enabled
+
+            Text {
+                id: orientationLabel
+
+                x: Theme.space.sm + Theme.space.xxs
+                anchors.bottom: parent.bottom
+                textFormat: Text.PlainText
+                text: qsTr("Orientation")
+                color: Theme.colors.textTertiary
+                font.pixelSize: Theme.type.caption.size
+                font.weight: Font.DemiBold
+            }
         }
 
         CommandMenuItem {
-            objectName: "gridMenuMute"
-            commandState: muteCommand
+            objectName: "gridMenuOrientationFollow"
+            commandState: menuFollowCommand
+            choice: true
         }
 
-        MenuItem {
-            objectName: "gridMenuScreen"
-            visible: (cellMenu.entry?.width ?? 9999) < 300
-            iconName: "power"
-            text: screenMenuCommand.title
-            enabled: screenMenuCommand.enabled
-            onTriggered: DeviceManager.gridScreen(cellMenu.serial, !screenMenuCommand.checked)
+        CommandMenuItem {
+            objectName: "gridMenuOrientationPortrait"
+            commandState: menuPortraitCommand
+            choice: true
         }
 
+        CommandMenuItem {
+            objectName: "gridMenuOrientationLandscape"
+            commandState: menuLandscapeCommand
+            choice: true
+        }
+
+        MenuSeparator {}
+
         MenuItem {
-            objectName: "gridMenuSync"
-            iconName: "sync"
-            text: qsTr("Sync…")
-            enabled: cellMenu.syncRole !== "follower"
-            shortcut: cellMenu.syncRole === "follower" ? qsTr("Following %1").arg(cellMenu.entry?.syncLeader ?? "")
-                    : cellMenu.syncRole === "master" ? qsTr("%n phone(s)", "", cellMenu.followers) : ""
-            onTriggered: overlay.openSync(cellMenu.serial)
+            objectName: "gridMenuDisconnect"
+            danger: true
+            iconName: "x"
+            text: qsTr("Disconnect this phone")
+            onTriggered: DeviceManager.disconnectDevice(cellMenu.serial)
         }
     }
 

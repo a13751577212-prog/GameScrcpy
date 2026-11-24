@@ -508,8 +508,11 @@ bool GridWindow::routePress(const QMouseEvent& mouse, bool doubleClick)
         emit cellToggled(press.serial);
         break;
     case GridCells::Action::OwnWindow:
-        emit ownWindowWanted(press.serial);
-        break;
+        // A quick pair of clicks on the picture is just input for that phone.
+        // Opening a window is only done from the explicit toolbar/menu buttons.
+        setTarget(press.serial);
+        m_forwarded = true;
+        return false;
     case GridCells::Action::BackToGrid:
         emit backToGridWanted(press.serial);
         break;

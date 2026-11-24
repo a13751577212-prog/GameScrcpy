@@ -7626,6 +7626,30 @@
         <source>Follow the master</source>
         <translation>跟随主控</translation>
     </message>
+    <message>
+        <source>Settings</source>
+        <translation>设置</translation>
+    </message>
+    <message>
+        <source>Volume</source>
+        <translation>音量</translation>
+    </message>
+    <message>
+        <source>Muted</source>
+        <translation>静音中</translation>
+    </message>
+    <message>
+        <source>Sound on</source>
+        <translation>声音已开启</translation>
+    </message>
+    <message>
+        <source>Orientation</source>
+        <translation>屏幕方向</translation>
+    </message>
+    <message>
+        <source>Disconnect this phone</source>
+        <translation>断开这台设备</translation>
+    </message>
 </context>
 <context>
     <name>GuideHero</name>
