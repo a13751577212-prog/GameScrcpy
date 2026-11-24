@@ -127,16 +127,16 @@ QPointF middleOf(const GridCells& cells, const QString& serial)
     return cell->view.center();
 }
 
-QPointF headerOf(const GridCells& cells, const QString& serial)
+QPointF footerOf(const GridCells& cells, const QString& serial)
 {
     const GridCells::Cell* cell = cells.find(serial);
     REQUIRE(cell != nullptr);
-    return cell->header.center();
+    return cell->footer.center();
 }
 
 constexpr double kTop = 84.0;
 constexpr double kHeightShare = 0.8;
-constexpr GridCells::Metrics kChrome{.header = 32.0, .gap = 8.0, .margin = 8.0, .inset = 2.0, .menu = 30.0};
+constexpr GridCells::Metrics kChrome{.footer = 30.0, .gap = 8.0, .margin = 8.0, .inset = 2.0};
 constexpr QSize kScreen(1920, 1040);
 
 GridCells phonesIn(const std::vector<double>& aspects)
@@ -244,9 +244,9 @@ TEST_CASE("cells come and go with the phones, and the input target goes away wit
     CHECK(cells.serials() == QStringList{u"A"_s, u"B"_s, u"C"_s});
     CHECK(cells.shape() == GridShape{.columns = 3, .rows = 1});
     for (const GridCells::Cell& cell : cells.cells()) {
-        CHECK(cell.area.contains(cell.header));
+        CHECK(cell.area.contains(cell.footer));
         CHECK(cell.area.contains(cell.view));
-        CHECK(cell.view.top() >= cell.header.bottom());
+        CHECK(cell.view.bottom() <= cell.footer.top());
         CHECK(cell.area.top() >= 40.0);
     }
 
@@ -282,7 +282,7 @@ TEST_CASE("cells come and go with the phones, and the input target goes away wit
     CHECK(cells.target().isEmpty());
 }
 
-TEST_CASE("a click on another cell makes that phone the input target and lets go of what the last one held (ADR-0096)")
+TEST_CASE("clicks toggle following while the master keeps the keys and mouse (multi-device mod)")
 {
     const gs::input::LoadResult loaded = gs::input::loadProfile(kJump);
     REQUIRE(loaded.ok());
@@ -300,23 +300,21 @@ TEST_CASE("a click on another cell makes that phone the input target and lets go
     gs::app::InputHost host{{.pressedMouse = [] { return std::uint8_t{0}; }}};
     host.setProfile(std::make_shared<const gs::input::Profile>(loaded.profile), 0us);
     host.setActive(true, 0us);
-    const auto click = [&](const QString& serial, std::int64_t timeMs) {
-        const GridCells::Press press = cells.press(middleOf(cells, serial), Qt::LeftButton, timeMs);
-        if (press.action == GridCells::Action::Select) {
-            host.setChannel(channels.at(press.serial), std::chrono::milliseconds(timeMs));
-        }
-        return press.action;
-    };
 
-    CHECK(click(u"A"_s, 1000) == GridCells::Action::Select);
+    // The paw sets the master; a click on another cell only toggles its follow checkbox.
+    REQUIRE(cells.setTarget(u"A"_s));
+    CHECK(cells.press(middleOf(cells, u"B"_s), Qt::LeftButton, 1000).action == GridCells::Action::Toggle);
     CHECK(cells.target() == u"A"_s);
+    CHECK(cells.press(middleOf(cells, u"A"_s), Qt::LeftButton, 1500).action == GridCells::Action::Forward);
+
+    host.setChannel(channels.at(u"A"_s), 1000ms);
     host.key({.makeCode = 0x39}, 1100ms);
     REQUIRE(sinkA.frames.size() == 1);
     CHECK(sinkA.frames.back().points[0].action == gs::protocol::TouchAction::Down);
     CHECK(host.activeTouches() == 1);
 
-    CHECK(click(u"B"_s, 2000) == GridCells::Action::Select);
-    CHECK(cells.target() == u"B"_s);
+    host.setChannel(channels.at(u"B"_s), 2000ms);
+    CHECK(cells.target() == u"A"_s);
     REQUIRE(sinkA.frames.size() == 2);
     CHECK(sinkA.frames.back().points[0].action == gs::protocol::TouchAction::Cancel);
     CHECK(host.activeTouches() == 0);
@@ -326,16 +324,15 @@ TEST_CASE("a click on another cell makes that phone the input target and lets go
     CHECK(sinkB.frames.back().points[0].action == gs::protocol::TouchAction::Down);
     CHECK(sinkA.frames.size() == 2);
 
-    CHECK(click(u"B"_s, 5000) == GridCells::Action::Forward);
-    CHECK(cells.target() == u"B"_s);
+    CHECK(cells.press(middleOf(cells, u"A"_s), Qt::LeftButton, 5000).action == GridCells::Action::Forward);
 }
 
-TEST_CASE("a double click opens the phone's own window and another brings it back, single clicks only choose (ADR-0096)")
+TEST_CASE("double click opens a phone's own window, single clicks toggle following and the footer stays chrome (ADR-0096)")
 {
     GridCells cells = laidOut({u"A"_s, u"B"_s});
     const QPointF a = middleOf(cells, u"A"_s);
 
-    CHECK(cells.press(a, Qt::LeftButton, 1000).action == GridCells::Action::Select);
+    CHECK(cells.press(a, Qt::LeftButton, 1000).action == GridCells::Action::Toggle);
     const GridCells::Press open = cells.press(a, Qt::LeftButton, 1200);
     CHECK(open.action == GridCells::Action::OwnWindow);
     CHECK(open.serial == u"A"_s);
@@ -349,19 +346,21 @@ TEST_CASE("a double click opens the phone's own window and another brings it bac
     CHECK(back.serial == u"A"_s);
     CHECK(cells.setSeparate(u"A"_s, false));
 
-    CHECK(cells.press(a, Qt::LeftButton, 3000).action == GridCells::Action::Select);
-    CHECK(cells.press(a, Qt::LeftButton, 5000).action == GridCells::Action::Forward);
-    CHECK(cells.press(a, Qt::LeftButton, 5100).action == GridCells::Action::Forward);
+    CHECK(cells.press(a, Qt::LeftButton, 3000).action == GridCells::Action::Toggle);
+    CHECK(cells.press(a, Qt::LeftButton, 3500).action == GridCells::Action::Toggle);
+    CHECK(cells.press(a, Qt::LeftButton, 4000).action == GridCells::Action::Toggle);
 
-    const QPointF title = headerOf(cells, u"A"_s);
-    CHECK(cells.press(title, Qt::LeftButton, 7000).action == GridCells::Action::None);
-    CHECK(cells.press(title, Qt::LeftButton, 7100).action == GridCells::Action::OwnWindow);
+    // The bottom bar is chrome: it never reaches the phone and never starts a double click.
+    const QPointF bar = footerOf(cells, u"A"_s);
+    CHECK(cells.press(bar, Qt::LeftButton, 7000).action == GridCells::Action::Chrome);
+    CHECK(cells.press(bar, Qt::LeftButton, 7100).action == GridCells::Action::Chrome);
 
     const QPointF b = middleOf(cells, u"B"_s);
-    CHECK(cells.press(b, Qt::RightButton, 8000).action == GridCells::Action::Select);
-    CHECK(cells.press(b, Qt::LeftButton, 8100).action == GridCells::Action::Forward);
+    CHECK(cells.press(b, Qt::RightButton, 8000).action == GridCells::Action::Toggle);
+    CHECK(cells.press(b, Qt::LeftButton, 8100).action == GridCells::Action::Toggle);
 
-    CHECK(cells.press(a, Qt::LeftButton, 9000).action == GridCells::Action::Select);
+    REQUIRE(cells.setTarget(u"A"_s));
+    CHECK(cells.press(a, Qt::LeftButton, 9000).action == GridCells::Action::Forward);
     CHECK(cells.press(a + QPointF(20.0, 0.0), Qt::LeftButton, 9100).action == GridCells::Action::Forward);
 
     CHECK(cells.press(QPointF(1.0, 1.0), Qt::LeftButton, 9500).action == GridCells::Action::Outside);
@@ -386,7 +385,8 @@ TEST_CASE("only the cell that has the keyboard and mouse shows key hints and the
     CHECK(gs::app::gridHints(cells, true, false, false, u"A"_s) ==
           GridHints{.serial = u"A"_s, .keyHints = true, .wheel = false});
 
-    CHECK(cells.press(middleOf(cells, u"B"_s), Qt::LeftButton, 1000).action == GridCells::Action::Select);
+    CHECK(cells.press(middleOf(cells, u"B"_s), Qt::LeftButton, 1000).action == GridCells::Action::Toggle);
+    REQUIRE(cells.setTarget(u"B"_s));
     CHECK(gs::app::gridHints(cells, true, false, true, u"A"_s) ==
           GridHints{.serial = u"B"_s, .keyHints = true, .wheel = false});
     CHECK(gs::app::gridHints(cells, true, false, true, u"B"_s).wheel);
@@ -510,32 +510,33 @@ TEST_CASE("ADR-0107: a grid cell keeps whole frames per second, its sync role, a
     CHECK(cells.knownAspects() == 1);
 }
 
-TEST_CASE("ADR-0107: a press on a cell's menu button opens its menu without choosing the cell or making a double click")
+TEST_CASE("ADR-0107: the bottom bar never forwards a click to the phone nor opens its menu")
 {
     GridCells cells = laidOut({u"A"_s, u"B"_s});
     const GridCells::Cell* a = cells.find(u"A"_s);
     REQUIRE(a != nullptr);
-    CHECK(a->menu.width() == doctest::Approx(30.0));
-    CHECK(a->menu.right() == doctest::Approx(a->area.right()));
-    CHECK(a->header.contains(a->menu));
-    const QPointF menu = a->menu.center();
+    CHECK(a->footer.height() == doctest::Approx(32.0));
+    CHECK(a->footer.bottom() == doctest::Approx(a->area.bottom()));
+    CHECK(a->area.contains(a->footer));
+    CHECK_FALSE(a->view.intersects(a->footer));
+    const QPointF bar = a->footer.center();
     const QPointF picture = middleOf(cells, u"A"_s);
 
-    const GridCells::Press opened = cells.press(menu, Qt::LeftButton, 1000);
-    CHECK(opened.action == GridCells::Action::Menu);
-    CHECK(opened.serial == u"A"_s);
+    CHECK(cells.press(bar, Qt::LeftButton, 1000).action == GridCells::Action::Chrome);
+    CHECK(cells.press(bar, Qt::LeftButton, 1100).action == GridCells::Action::Chrome);
     CHECK(cells.target().isEmpty());
-    CHECK(cells.press(menu, Qt::LeftButton, 1100).action == GridCells::Action::Menu);
 
-    CHECK(cells.press(picture, Qt::LeftButton, 2000).action == GridCells::Action::Select);
-    CHECK(cells.press(menu, Qt::LeftButton, 2100).action == GridCells::Action::Menu);
-    CHECK(cells.press(picture, Qt::LeftButton, 2200).action == GridCells::Action::Forward);
-    CHECK(cells.target() == u"A"_s);
+    CHECK(cells.press(picture, Qt::LeftButton, 2000).action == GridCells::Action::Toggle);
+    CHECK(cells.press(bar, Qt::LeftButton, 2100).action == GridCells::Action::Chrome);
+    CHECK(cells.press(picture, Qt::LeftButton, 2200).action == GridCells::Action::Toggle);
+
+    REQUIRE(cells.setTarget(u"A"_s));
+    CHECK(cells.press(picture, Qt::LeftButton, 3000).action == GridCells::Action::Forward);
 
     REQUIRE(cells.setSeparate(u"B"_s, true));
     const GridCells::Cell* b = cells.find(u"B"_s);
     REQUIRE(b != nullptr);
-    CHECK(cells.press(b->menu.center(), Qt::LeftButton, 3000).action == GridCells::Action::Menu);
-    CHECK(cells.press(headerOf(cells, u"B"_s), Qt::LeftButton, 3100).action == GridCells::Action::None);
+    CHECK(cells.press(b->footer.center(), Qt::LeftButton, 4000).action == GridCells::Action::Chrome);
+    CHECK(cells.press(footerOf(cells, u"B"_s), Qt::LeftButton, 4100).action == GridCells::Action::Chrome);
     CHECK(cells.target() == u"A"_s);
 }
