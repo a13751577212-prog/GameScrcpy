@@ -598,31 +598,31 @@ Item {
                     id: corner
 
                     required property int index
-                    readonly property real len: Theme.space.sm + Theme.space.xxs
-                    readonly property real line: Theme.size.edgeLine
-                    readonly property real offset: overlay.inset + Theme.space.xxs
-                    readonly property bool right: index === 1 || index === 2
-                    readonly property bool bottom: index === 2 || index === 3
+                    readonly property real cornerLen: Theme.space.sm + Theme.space.xxs
+                    readonly property real cornerLine: Theme.size.edgeLine
+                    readonly property real cornerOffset: overlay.inset + Theme.space.xxs
+                    readonly property bool atRight: index === 1 || index === 2
+                    readonly property bool atBottom: index === 2 || index === 3
 
-                    x: corner.right ? cell.width - corner.offset - corner.len : corner.offset
-                    y: corner.bottom ? cell.height - corner.offset - corner.len : corner.offset
-                    width: corner.len
-                    height: corner.len
+                    x: corner.atRight ? cell.width - corner.cornerOffset - corner.cornerLen : corner.cornerOffset
+                    y: corner.atBottom ? cell.height - corner.cornerOffset - corner.cornerLen : corner.cornerOffset
+                    width: corner.cornerLen
+                    height: corner.cornerLen
                     z: 2
 
                     Rectangle {
                         x: 0
-                        y: corner.bottom ? corner.len - corner.line : 0
-                        width: corner.len
-                        height: corner.line
+                        y: corner.atBottom ? corner.cornerLen - corner.cornerLine : 0
+                        width: corner.cornerLen
+                        height: corner.cornerLine
                         color: gridFrame.edge
                     }
 
                     Rectangle {
-                        x: corner.right ? corner.len - corner.line : 0
+                        x: corner.atRight ? corner.cornerLen - corner.cornerLine : 0
                         y: 0
-                        width: corner.line
-                        height: corner.len
+                        width: corner.cornerLine
+                        height: corner.cornerLen
                         color: gridFrame.edge
                     }
                 }
