@@ -134,9 +134,16 @@ QPointF footerOf(const GridCells& cells, const QString& serial)
     return cell->footer.center();
 }
 
+QPointF frameOf(const GridCells& cells, const QString& serial)
+{
+    const GridCells::Cell* cell = cells.find(serial);
+    REQUIRE(cell != nullptr);
+    return QPointF(cell->area.x() + 1.0, cell->view.center().y());
+}
+
 constexpr double kTop = 84.0;
 constexpr double kHeightShare = 0.8;
-constexpr GridCells::Metrics kChrome{.footer = 30.0, .gap = 8.0, .margin = 8.0, .inset = 2.0};
+constexpr GridCells::Metrics kChrome{.footer = 30.0, .gap = 8.0, .margin = 8.0, .inset = 2.0, .edge = 0.0};
 constexpr QSize kScreen(1920, 1040);
 
 GridCells phonesIn(const std::vector<double>& aspects)
@@ -282,7 +289,7 @@ TEST_CASE("cells come and go with the phones, and the input target goes away wit
     CHECK(cells.target().isEmpty());
 }
 
-TEST_CASE("clicks toggle following while the master keeps the keys and mouse (multi-device mod)")
+TEST_CASE("every picture forwards input while the frame toggles following (multi-device mod)")
 {
     const gs::input::LoadResult loaded = gs::input::loadProfile(kJump);
     REQUIRE(loaded.ok());
@@ -301,9 +308,9 @@ TEST_CASE("clicks toggle following while the master keeps the keys and mouse (mu
     host.setProfile(std::make_shared<const gs::input::Profile>(loaded.profile), 0us);
     host.setActive(true, 0us);
 
-    // The paw sets the master; a click on another cell only toggles its follow checkbox.
+    // Any picture can be used at any time; only the narrow frame toggles following.
     REQUIRE(cells.setTarget(u"A"_s));
-    CHECK(cells.press(middleOf(cells, u"B"_s), Qt::LeftButton, 1000).action == GridCells::Action::Toggle);
+    CHECK(cells.press(middleOf(cells, u"B"_s), Qt::LeftButton, 1000).action == GridCells::Action::Forward);
     CHECK(cells.target() == u"A"_s);
     CHECK(cells.press(middleOf(cells, u"A"_s), Qt::LeftButton, 1500).action == GridCells::Action::Forward);
 
@@ -327,12 +334,12 @@ TEST_CASE("clicks toggle following while the master keeps the keys and mouse (mu
     CHECK(cells.press(middleOf(cells, u"A"_s), Qt::LeftButton, 5000).action == GridCells::Action::Forward);
 }
 
-TEST_CASE("double click opens a phone's own window, single clicks toggle following and the footer stays chrome (ADR-0096)")
+TEST_CASE("double click opens a phone's own window, picture clicks forward and the footer stays chrome (ADR-0096)")
 {
     GridCells cells = laidOut({u"A"_s, u"B"_s});
     const QPointF a = middleOf(cells, u"A"_s);
 
-    CHECK(cells.press(a, Qt::LeftButton, 1000).action == GridCells::Action::Toggle);
+    CHECK(cells.press(a, Qt::LeftButton, 1000).action == GridCells::Action::Forward);
     const GridCells::Press open = cells.press(a, Qt::LeftButton, 1200);
     CHECK(open.action == GridCells::Action::OwnWindow);
     CHECK(open.serial == u"A"_s);
@@ -346,9 +353,9 @@ TEST_CASE("double click opens a phone's own window, single clicks toggle followi
     CHECK(back.serial == u"A"_s);
     CHECK(cells.setSeparate(u"A"_s, false));
 
-    CHECK(cells.press(a, Qt::LeftButton, 3000).action == GridCells::Action::Toggle);
-    CHECK(cells.press(a, Qt::LeftButton, 3500).action == GridCells::Action::Toggle);
-    CHECK(cells.press(a, Qt::LeftButton, 4000).action == GridCells::Action::Toggle);
+    CHECK(cells.press(a, Qt::LeftButton, 3000).action == GridCells::Action::Forward);
+    CHECK(cells.press(a, Qt::LeftButton, 3500).action == GridCells::Action::Forward);
+    CHECK(cells.press(a, Qt::LeftButton, 4000).action == GridCells::Action::Forward);
 
     // The bottom bar is chrome: it never reaches the phone and never starts a double click.
     const QPointF bar = footerOf(cells, u"A"_s);
@@ -356,14 +363,17 @@ TEST_CASE("double click opens a phone's own window, single clicks toggle followi
     CHECK(cells.press(bar, Qt::LeftButton, 7100).action == GridCells::Action::Chrome);
 
     const QPointF b = middleOf(cells, u"B"_s);
-    CHECK(cells.press(b, Qt::RightButton, 8000).action == GridCells::Action::Toggle);
-    CHECK(cells.press(b, Qt::LeftButton, 8100).action == GridCells::Action::Toggle);
+    CHECK(cells.press(b, Qt::RightButton, 8000).action == GridCells::Action::Forward);
+    CHECK(cells.press(b, Qt::LeftButton, 8100).action == GridCells::Action::Forward);
 
     REQUIRE(cells.setTarget(u"A"_s));
     CHECK(cells.press(a, Qt::LeftButton, 9000).action == GridCells::Action::Forward);
     CHECK(cells.press(a + QPointF(20.0, 0.0), Qt::LeftButton, 9100).action == GridCells::Action::Forward);
 
     CHECK(cells.press(QPointF(1.0, 1.0), Qt::LeftButton, 9500).action == GridCells::Action::Outside);
+
+    CHECK(cells.press(frameOf(cells, u"A"_s), Qt::LeftButton, 9600).action == GridCells::Action::Toggle);
+    CHECK(cells.press(frameOf(cells, u"B"_s), Qt::LeftButton, 9700).action == GridCells::Action::Toggle);
 }
 
 TEST_CASE("only the cell that has the keyboard and mouse shows key hints and the action wheel (ADR-0096, ADR-0094)")
@@ -385,7 +395,7 @@ TEST_CASE("only the cell that has the keyboard and mouse shows key hints and the
     CHECK(gs::app::gridHints(cells, true, false, false, u"A"_s) ==
           GridHints{.serial = u"A"_s, .keyHints = true, .wheel = false});
 
-    CHECK(cells.press(middleOf(cells, u"B"_s), Qt::LeftButton, 1000).action == GridCells::Action::Toggle);
+    CHECK(cells.press(middleOf(cells, u"B"_s), Qt::LeftButton, 1000).action == GridCells::Action::Forward);
     REQUIRE(cells.setTarget(u"B"_s));
     CHECK(gs::app::gridHints(cells, true, false, true, u"A"_s) ==
           GridHints{.serial = u"B"_s, .keyHints = true, .wheel = false});
@@ -526,9 +536,9 @@ TEST_CASE("ADR-0107: the bottom bar never forwards a click to the phone nor open
     CHECK(cells.press(bar, Qt::LeftButton, 1100).action == GridCells::Action::Chrome);
     CHECK(cells.target().isEmpty());
 
-    CHECK(cells.press(picture, Qt::LeftButton, 2000).action == GridCells::Action::Toggle);
+    CHECK(cells.press(picture, Qt::LeftButton, 2000).action == GridCells::Action::Forward);
     CHECK(cells.press(bar, Qt::LeftButton, 2100).action == GridCells::Action::Chrome);
-    CHECK(cells.press(picture, Qt::LeftButton, 2200).action == GridCells::Action::Toggle);
+    CHECK(cells.press(picture, Qt::LeftButton, 2500).action == GridCells::Action::Forward);
 
     REQUIRE(cells.setTarget(u"A"_s));
     CHECK(cells.press(picture, Qt::LeftButton, 3000).action == GridCells::Action::Forward);

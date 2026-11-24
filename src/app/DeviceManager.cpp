@@ -109,6 +109,10 @@ constexpr int kScheduleWaitMs = 1000;
 constexpr int kScheduledConnectTries = 2;
 constexpr int kKeyWakeup = 224;
 constexpr int kKeySleep = 223;
+// Android KEYCODE_HOME / BACK / APP_SWITCH (same values as DeviceCommands.cpp).
+constexpr int kKeyHome = 3;
+constexpr int kKeyBack = 4;
+constexpr int kKeyAppSwitch = 187;
 constexpr quint64 kTaskGestureSlots = 255;
 constexpr int kTaskGestureShift = 56;
 constexpr std::uint32_t kScreenshotRequests = 0x80000000U;
@@ -3144,6 +3148,7 @@ void DeviceManager::showGrid()
     });
     connect(grid, &GridWindow::closedByUser, this, &DeviceManager::closeGrid);
     connect(grid, &GridWindow::targetChosen, this, [this] { foregroundChanged(); });
+    connect(grid, &GridWindow::cellFocused, this, [this] { foregroundChanged(); });
     connect(grid, &GridWindow::ownWindowWanted, this,
             [this](const QString& serial) { setGridSeparate(serial, true, true); });
     connect(grid, &GridWindow::backToGridWanted, this,
@@ -3355,8 +3360,9 @@ void DeviceManager::setGridMaster(const QString& serial)
         stopSync(serial);
         m_gridMaster.clear();
         if (m_grid != nullptr) {
-            m_grid->releaseTarget();
+            m_grid->setMaster(QString());
         }
+        foregroundChanged();
         applyFollowSelection();
         return;
     }
@@ -3365,7 +3371,7 @@ void DeviceManager::setGridMaster(const QString& serial)
     }
     m_gridMaster = serial;
     if (m_grid != nullptr) {
-        m_grid->setTarget(serial);
+        m_grid->setMaster(serial);
     }
     foregroundChanged();
     applyFollowSelection();
@@ -3544,8 +3550,8 @@ void DeviceManager::closeGrid()
         if (held) {
             mirror->lendVideo(false);
             m_input->setPictureArea(serial, mirror->pictureShare());
-            mirror->show();
-            stepAside(*mirror);
+            // Closing the grid must not pop one independent window per phone.
+            // The mirror stays hidden and its video is lent again on reopen.
         }
     }
     if (aimed) {
@@ -3653,24 +3659,67 @@ void DeviceManager::sendScroll(const QString& serial, input::Vec2 position, int 
 
 void DeviceManager::sendKey(const QString& serial, int keycode, int metaState, bool down, int repeat)
 {
-    const int at = indexOf(serial);
-    const std::shared_ptr<ControlChannel> channel = at >= 0 ? channelOf(m_rows[static_cast<std::size_t>(at)]) : nullptr;
-    if (channel != nullptr) {
-        protocol::Key key;
-        key.action = down ? protocol::KeyAction::Down : protocol::KeyAction::Up;
-        key.keycode = static_cast<std::uint32_t>(keycode);
-        key.metaState = static_cast<std::uint32_t>(metaState);
-        key.repeat = static_cast<std::uint16_t>(std::clamp(repeat, 0, 0xFFFF));
-        static_cast<void>(channel->send(key));
+    protocol::Key key;
+    key.action = down ? protocol::KeyAction::Down : protocol::KeyAction::Up;
+    key.keycode = static_cast<std::uint32_t>(keycode);
+    key.metaState = static_cast<std::uint32_t>(metaState);
+    key.repeat = static_cast<std::uint16_t>(std::clamp(repeat, 0, 0xFFFF));
+    const auto deliver = [this, &key](const QString& target) {
+        const int at = indexOf(target);
+        const std::shared_ptr<ControlChannel> channel =
+            at >= 0 ? channelOf(m_rows[static_cast<std::size_t>(at)]) : nullptr;
+        if (channel != nullptr) {
+            static_cast<void>(channel->send(key));
+        }
+    };
+    deliver(serial);
+    if (!m_gridMaster.isEmpty() && serial == m_gridMaster) {
+        for (const QString& follower : m_sync.followersOf(serial)) {
+            deliver(follower);
+        }
     }
 }
 
 void DeviceManager::sendText(const QString& serial, const QString& text)
 {
-    const int at = indexOf(serial);
-    const std::shared_ptr<ControlChannel> channel = at >= 0 ? channelOf(m_rows[static_cast<std::size_t>(at)]) : nullptr;
-    if (channel != nullptr) {
-        static_cast<void>(channel->type(text.toStdString()));
+    const auto bytes = text.toStdString();
+    const auto deliver = [this, &bytes](const QString& target) {
+        const int at = indexOf(target);
+        const std::shared_ptr<ControlChannel> channel =
+            at >= 0 ? channelOf(m_rows[static_cast<std::size_t>(at)]) : nullptr;
+        if (channel != nullptr) {
+            static_cast<void>(channel->type(bytes));
+        }
+    };
+    deliver(serial);
+    if (!m_gridMaster.isEmpty() && serial == m_gridMaster) {
+        for (const QString& follower : m_sync.followersOf(serial)) {
+            deliver(follower);
+        }
+    }
+}
+
+void DeviceManager::gridNavigation(const QString& serial, const QString& command)
+{
+    int keycode = 0;
+    if (command == QStringLiteral("back")) {
+        keycode = kKeyBack;
+    } else if (command == QStringLiteral("home")) {
+        keycode = kKeyHome;
+    } else if (command == QStringLiteral("appSwitch")) {
+        keycode = kKeyAppSwitch;
+    }
+    if (keycode == 0 || indexOf(serial) < 0) {
+        return;
+    }
+    pressKey(serial, keycode);
+    if (m_gridMaster.isEmpty() || serial != m_gridMaster) {
+        return;
+    }
+    for (const QString& follower : m_sync.followersOf(serial)) {
+        if (indexOf(follower) >= 0) {
+            pressKey(follower, keycode);
+        }
     }
 }
 

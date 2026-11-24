@@ -70,6 +70,7 @@ QtObject {
     final readonly property int edgeHalo: 40
     final readonly property int syncFrame: 3
     final readonly property int syncFrameFollower: 2
+    final readonly property int gridEdge: 6
     final readonly property int batchJobs: 176
     final readonly property int keyHint: 30
     final readonly property int keyHintSmall: 26

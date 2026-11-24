@@ -200,8 +200,8 @@ std::vector<GridItem> GridCells::items(const Metrics& metrics) const
     std::vector<GridItem> list;
     list.reserve(m_cells.size());
     for (const Cell& cell : m_cells) {
-        list.push_back({.aspect = cell.aspect,
-                        .chrome = QSizeF(2.0 * metrics.inset, metrics.footer + 2.0 * metrics.inset)});
+        const double pad = metrics.inset + metrics.edge;
+        list.push_back({.aspect = cell.aspect, .chrome = QSizeF(2.0 * pad, metrics.footer + 2.0 * pad)});
     }
     return list;
 }
@@ -216,10 +216,10 @@ void GridCells::layout(const QRectF& area, const Metrics& metrics)
         const QRectF& rect = rects[index];
         cell.area = rect;
         const double bar = std::max(0.0, std::min(metrics.footer, rect.height()));
+        const double pad = metrics.inset + metrics.edge;
         cell.footer = QRectF(rect.x(), rect.bottom() - bar, rect.width(), bar);
-        cell.view = QRectF(rect.x() + metrics.inset, rect.y() + metrics.inset,
-                           std::max(0.0, rect.width() - 2.0 * metrics.inset),
-                           std::max(0.0, rect.height() - bar - 2.0 * metrics.inset));
+        cell.view = QRectF(rect.x() + pad, rect.y() + pad, std::max(0.0, rect.width() - 2.0 * pad),
+                           std::max(0.0, rect.height() - bar - 2.0 * pad));
     }
 }
 
@@ -258,15 +258,17 @@ GridCells::Press GridCells::press(QPointF at, Qt::MouseButton button, std::int64
         return {.action = Action::None, .serial = cell.serial};
     }
     if (!inView) {
+        // The narrow frame around the picture is the follow toggle; the picture
+        // itself always forwards input to that phone, master or not.
         m_last.reset();
-        return {.action = Action::None, .serial = cell.serial};
+        return {.action = Action::Toggle, .serial = cell.serial};
     }
     if (repeated && m_last && m_last->view) {
         m_last.reset();
         return {.action = Action::OwnWindow, .serial = cell.serial};
     }
     remember(cell, at, button, timeMs, true);
-    return {.action = cell.serial == m_target ? Action::Forward : Action::Toggle, .serial = cell.serial};
+    return {.action = Action::Forward, .serial = cell.serial};
 }
 
 bool GridCells::repeats(const QString& serial, QPointF at, Qt::MouseButton button, std::int64_t timeMs) const

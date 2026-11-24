@@ -11,9 +11,10 @@ Item {
     id: overlay
 
     property var cells: []
-    readonly property var chosen: overlay.cells.find(entry => entry.target === true) ?? null
+    readonly property var chosen: overlay.cells.find(entry => entry.master === true) ?? null
     readonly property real topInset: titleBar.height + toolbar.height
     readonly property int footerHeight: Theme.size.control
+    readonly property int edge: Theme.size.gridEdge
     readonly property int gap: Theme.space.sm
     readonly property int margin: Theme.space.sm
     readonly property int inset: Theme.size.focusRing
@@ -26,7 +27,7 @@ Item {
         let total = 0
         let checked = 0
         for (const entry of overlay.cells) {
-            if (entry.target === true || entry.separate === true)
+            if (entry.master === true || entry.separate === true)
                 continue
             total++
             if (entry.checked === true)
@@ -290,8 +291,8 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(0, (who.aimed ? release.x - Theme.space.xs : who.width - Theme.space.md) - x)
                 textFormat: Text.PlainText
-                text: who.aimed ? qsTr("Keys and mouse go to: %1").arg(overlay.chosen.name)
-                                : qsTr("Click a cell to toggle whether it follows")
+                text: who.aimed ? qsTr("Sync master: %1").arg(overlay.chosen.name)
+                                : qsTr("Click a frame to toggle following")
                 elide: Text.ElideRight
                 color: who.aimed ? Theme.colors.accentText : Theme.colors.textSecondary
                 font.pixelSize: Theme.type.label.size
@@ -520,11 +521,10 @@ Item {
 
             required property int index
             readonly property var entry: overlay.cells[index] ?? ({})
-            readonly property bool chosen: entry.target === true
+            readonly property bool chosen: entry.master === true
             readonly property bool away: entry.separate === true
             readonly property real rate: entry.rate ?? -1
             readonly property bool following: !chosen && !away && entry.checked === true
-                                              && overlay.chosen !== null
             readonly property bool narrow: width < 300
 
             objectName: "gridCell"
@@ -537,30 +537,27 @@ Item {
             CommandState { id: homeCommand; command: "device.home"; target: cell.entry.serial ?? "" }
             CommandState { id: recentCommand; command: "device.appSwitch"; target: cell.entry.serial ?? "" }
 
-            Binding {
-                target: followBox
-                property: "checked"
-                value: cell.entry.checked === true
-            }
-
             Rectangle {
                 objectName: "gridFrame"
                 anchors.fill: parent
                 radius: Theme.radius.lg
                 color: Theme.colors.bgRaised
-                border.width: cell.chosen ? Theme.size.syncFrame
-                            : cell.following ? Theme.size.syncFrameFollower : Theme.size.stroke
-                border.color: cell.chosen || cell.following ? Theme.colors.accent : Theme.colors.strokeSubtle
+                border.width: overlay.edge + (cell.chosen ? Theme.size.edgeLine : 0)
+                border.color: cell.chosen ? Theme.colors.accent
+                            : cell.following ? Theme.colors.info : Theme.colors.strokeSubtle
             }
 
             Rectangle {
                 objectName: "gridPicture"
-                x: overlay.inset
-                y: overlay.inset
-                width: Math.max(0, parent.width - 2 * overlay.inset)
-                height: Math.max(0, parent.height - overlay.footerHeight - 2 * overlay.inset)
-                topLeftRadius: Math.max(0, Theme.radius.lg - overlay.inset)
-                topRightRadius: Math.max(0, Theme.radius.lg - overlay.inset)
+
+                readonly property real pad: overlay.inset + overlay.edge
+
+                x: pad
+                y: pad
+                width: Math.max(0, parent.width - 2 * pad)
+                height: Math.max(0, parent.height - overlay.footerHeight - 2 * pad)
+                topLeftRadius: Math.max(0, Theme.radius.lg - pad)
+                topRightRadius: Math.max(0, Theme.radius.lg - pad)
                 color: Theme.colors.bgSunken
             }
 
@@ -646,20 +643,11 @@ Item {
                     }
 
                     CellButton {
-                        objectName: "gridExpand"
-                        visible: !cell.narrow
-                        iconName: "popout"
-                        tip: qsTr("Open in its own window")
-                        onClicked: DeviceManager.showWindow(cell.entry.serial ?? "")
-                    }
-
-                    Checkbox {
-                        id: followBox
-
-                        objectName: "gridFollow"
-                        visible: !cell.chosen
-                        anchors.verticalCenter: parent.verticalCenter
-                        onClicked: DeviceManager.toggleGridFollow(cell.entry.serial ?? "")
+                        objectName: "gridBack"
+                        iconName: "arrow-left"
+                        tip: qsTr("Back")
+                        enabled: backCommand.enabled
+                        onClicked: DeviceManager.gridNavigation(cell.entry.serial ?? "", "back")
                     }
 
                     CellButton {
@@ -668,15 +656,7 @@ Item {
                         iconName: "square"
                         tip: qsTr("Recent apps")
                         enabled: recentCommand.enabled
-                        onClicked: recentCommand.trigger()
-                    }
-
-                    CellButton {
-                        objectName: "gridBack"
-                        iconName: "arrow-left"
-                        tip: qsTr("Back")
-                        enabled: backCommand.enabled
-                        onClicked: backCommand.trigger()
+                        onClicked: DeviceManager.gridNavigation(cell.entry.serial ?? "", "appSwitch")
                     }
 
                     CellButton {
@@ -684,7 +664,7 @@ Item {
                         iconName: "house"
                         tip: qsTr("Home")
                         enabled: homeCommand.enabled
-                        onClicked: homeCommand.trigger()
+                        onClicked: DeviceManager.gridNavigation(cell.entry.serial ?? "", "home")
                     }
 
                     CellButton {
@@ -694,6 +674,14 @@ Item {
                         iconName: "ellipsis"
                         tip: qsTr("More")
                         onClicked: overlay.openMenu(moreButton, cell.entry.serial ?? "")
+                    }
+
+                    CellButton {
+                        objectName: "gridExpand"
+                        visible: !cell.narrow
+                        iconName: "popout"
+                        tip: qsTr("Open in its own window")
+                        onClicked: DeviceManager.showWindow(cell.entry.serial ?? "")
                     }
                 }
             }

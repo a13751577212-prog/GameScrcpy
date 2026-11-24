@@ -1,5 +1,6 @@
 #include "MirrorWindow.h"
 
+#include "AppSettings.h"
 #include "CompanionInput.h"
 #include "CompanionLink.h"
 #include "DiagnosticsOverlay.h"
@@ -53,6 +54,14 @@ bool plain(Qt::WindowStates states)
     return !states.testAnyFlags(Qt::WindowMinimized | Qt::WindowMaximized | Qt::WindowFullScreen);
 }
 
+bool toolbarOnRightSetting()
+{
+    const AppSettings* settings = AppSettings::instance();
+    return settings != nullptr
+           && settings->values().value(QStringLiteral("display.toolbarSide")).toString()
+                  != QStringLiteral("top");
+}
+
 }
 
 MirrorWindow::MirrorWindow(const render::GraphicsDevice& graphics, std::shared_ptr<render::FrameSlot> frames,
@@ -101,6 +110,10 @@ MirrorWindow::MirrorWindow(const render::GraphicsDevice& graphics, std::shared_p
     m_clipGuard.setInterval(kClipCheck);
     connect(&m_clipGuard, &QTimer::timeout, this, &MirrorWindow::keepClip);
     QCoreApplication::instance()->installNativeEventFilter(this);
+    m_toolbarOnRight = toolbarOnRightSetting();
+    if (AppSettings* settings = AppSettings::instance(); settings != nullptr) {
+        connect(settings, &AppSettings::valuesChanged, this, &MirrorWindow::followToolbarSide);
+    }
     resize(360, 720);
 }
 
@@ -895,14 +908,17 @@ QRectF MirrorWindow::videoArea(const QRectF& view)
 
 void MirrorWindow::setToolbarPinned(bool pinned)
 {
-    if (pinned == m_toolbarPinned) {
+    m_toolbarPinnedRequest = pinned;
+    m_toolbarOnRight = toolbarOnRightSetting();
+    const bool effective = pinned && !m_toolbarOnRight;
+    if (effective == m_toolbarPinned) {
         return;
     }
     const int oldTop = reservedTop();
-    m_toolbarPinned = pinned;
+    m_toolbarPinned = effective;
     if (m_overlay != nullptr) {
         m_overlay->setProperty("reservedTop", reservedTop());
-        m_overlay->setProperty("toolbarPinned", pinned);
+        m_overlay->setProperty("toolbarPinned", m_toolbarPinned);
     }
     if (isVisible() && plain(windowStates()) && !m_mini && m_editor == nullptr) {
         resize(width(), height() + reservedTop() - oldTop);
@@ -910,6 +926,11 @@ void MirrorWindow::setToolbarPinned(bool pinned)
         layoutContent();
     }
     updateHints();
+}
+
+void MirrorWindow::followToolbarSide()
+{
+    setToolbarPinned(m_toolbarPinnedRequest);
 }
 
 void MirrorWindow::setTitleBarFixed(bool fixed)

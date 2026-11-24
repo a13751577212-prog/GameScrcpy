@@ -103,6 +103,7 @@ void GridWindow::attachOverlay(QQmlEngine& engine)
     m_metrics.gap = metric("gap", m_metrics.gap);
     m_metrics.margin = metric("margin", m_metrics.margin);
     m_metrics.inset = metric("inset", m_metrics.inset);
+    m_metrics.edge = metric("edge", m_metrics.edge);
     connect(overlay, SIGNAL(releaseWanted()), this, SLOT(releaseTarget()));
     QQmlComponent hintComponent(&engine, QStringLiteral("GameScrcpy.App"), QStringLiteral("GridHintLayer"));
     QObject* hintObject = hintComponent.create();
@@ -124,6 +125,9 @@ bool GridWindow::addCell(const QString& serial, const QString& name, double aspe
 {
     if (!m_cells.add(serial, name, aspect, true)) {
         return false;
+    }
+    if (m_cells.target().isEmpty()) {
+        m_cells.setTarget(serial);
     }
     auto* pointer = new MirrorInputItem(contentItem());
     pointer->setZ(kPointerZ);
@@ -251,7 +255,17 @@ void GridWindow::setTarget(const QString& serial)
 {
     if (m_cells.setTarget(serial)) {
         targetChanged();
+        emit cellFocused(serial);
     }
+}
+
+void GridWindow::setMaster(const QString& serial)
+{
+    if (m_master == serial) {
+        return;
+    }
+    m_master = serial;
+    publishCells();
 }
 
 void GridWindow::releaseTarget()
@@ -433,10 +447,14 @@ bool GridWindow::event(QEvent* event)
             return true;
         }
     } else if (type == QEvent::MouseMove) {
-        m_swallowed &= static_cast<const QMouseEvent*>(event)->buttons();
+        const auto* mouse = static_cast<const QMouseEvent*>(event);
+        m_swallowed &= mouse->buttons();
         if (m_swallowed != Qt::NoButton) {
             event->accept();
             return true;
+        }
+        if (mouse->buttons() == Qt::NoButton && m_foreground) {
+            focusUnderCursor(mouse->position());
         }
     }
     return QQuickWindow::event(event);
@@ -454,6 +472,9 @@ bool GridWindow::routePress(const QMouseEvent& mouse, bool doubleClick)
     m_swallowed &= mouse.buttons();
     const GridCells::Press press =
         m_cells.press(mouse.position(), mouse.button(), static_cast<std::int64_t>(mouse.timestamp()));
+    if (press.action == GridCells::Action::Forward || press.action == GridCells::Action::Chrome) {
+        setTarget(press.serial);
+    }
     m_forwarded = press.action == GridCells::Action::Outside || press.action == GridCells::Action::Forward ||
                   press.action == GridCells::Action::Chrome;
     switch (press.action) {
@@ -638,21 +659,38 @@ void GridWindow::focusTarget()
 {
     MirrorInputItem* focus = targetPointer();
     const bool popup = popupOpen();
+    // Every cell keeps a live input item: the mouse can operate any phone at any
+    // time. The target only decides which cell owns the keyboard focus.
+    for (auto& entry : m_panes) {
+        MirrorInputItem* pointer = entry.second.pointer;
+        if (pointer != nullptr) {
+            const bool usable = entry.second.video != nullptr;
+            pointer->setVisible(usable);
+            pointer->setEnabled(usable);
+        }
+    }
     if (focus != nullptr) {
-        focus->setVisible(true);
-        focus->setEnabled(true);
         if (!popup && !focus->hasActiveFocus()) {
             focus->forceActiveFocus(Qt::OtherFocusReason);
         }
     } else if (!popup && qobject_cast<MirrorInputItem*>(activeFocusItem()) != nullptr) {
         contentItem()->forceActiveFocus(Qt::OtherFocusReason);
     }
-    for (auto& entry : m_panes) {
-        MirrorInputItem* pointer = entry.second.pointer;
-        if (pointer != nullptr && pointer != focus) {
-            pointer->setEnabled(false);
-            pointer->setVisible(false);
+}
+
+void GridWindow::focusUnderCursor(QPointF at)
+{
+    if (overlayTakes(at)) {
+        return;
+    }
+    for (const GridCells::Cell& cell : m_cells.cells()) {
+        if (cell.separate || !cell.view.contains(at)) {
+            continue;
         }
+        if (cell.serial != target()) {
+            setTarget(cell.serial);
+        }
+        return;
     }
 }
 
@@ -742,6 +780,7 @@ void GridWindow::publishCells()
                                  {QStringLiteral("separate"), cell.separate},
                                  {QStringLiteral("checked"), cell.checked},
                                  {QStringLiteral("target"), cell.serial == target()},
+                                 {QStringLiteral("master"), cell.serial == m_master},
                                  {QStringLiteral("x"), cell.area.x()},
                                  {QStringLiteral("y"), cell.area.y()},
                                  {QStringLiteral("width"), cell.area.width()},

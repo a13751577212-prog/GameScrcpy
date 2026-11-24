@@ -461,6 +461,10 @@ Item {
                                    shortcut: qsTr("Shortcut only") })
                     }
                     SelectSetting {
+                        path: "display.toolbarSide"
+                        labels: ({ right: qsTr("Right side"), top: qsTr("Top") })
+                    }
+                    SelectSetting {
                         path: "display.statusCapsule"
                         labels: ({ auto: qsTr("Automatic"), always: qsTr("Always shown"), hidden: qsTr("Hidden") })
                     }

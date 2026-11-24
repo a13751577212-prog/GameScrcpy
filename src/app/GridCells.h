@@ -49,6 +49,7 @@ public:
         double gap = 8;
         double margin = 8;
         double inset = 2;
+        double edge = 6;
     };
 
     enum class Action : std::uint8_t { Outside, None, Forward, Toggle, Chrome, OwnWindow, BackToGrid };

@@ -32,6 +32,9 @@ Item {
     readonly property int fixedTitleHeight: titleBar.titleHeight
     property int reservedTop: 0
     readonly property string toolbarMode: AppSettings.values["display.toolbar"] ?? "pinned"
+    readonly property string toolbarSide: AppSettings.values["display.toolbarSide"] ?? "right"
+    readonly property bool toolbarOnRight: toolbarSide === "right"
+    readonly property bool toolbarAlwaysShown: toolbarOnRight && toolbarMode === "pinned"
     readonly property bool cameraGlow: AppSettings.values["display.cameraGlow"] ?? true
     property bool closeChosen: false
     readonly property real captionsWidth: fullScreen ? 0 : captions.width
@@ -41,6 +44,8 @@ Item {
                                                   + Theme.space.x6l + 2 * Theme.space.lg
     readonly property int pinnedBarHeight: pinnedTwoRows ? titleBar.titleHeight + Theme.size.toolbar
                                                          : Theme.size.toolbar
+    readonly property real toastBelow: toolbar.y + toolbar.height + Theme.space.sm
+                                       + (latencyCard.visible ? latencyCard.height + Theme.space.sm : 0)
     property bool keymap: true
     property bool cameraLocked: false
     property bool crosshair: false
@@ -236,8 +241,19 @@ Item {
             toolbar.reveal()
     }
 
+    function popupX(button, popupWidth) {
+        const left = button.mapToItem(overlay, 0, 0).x
+        return Math.max(Theme.space.sm - left, -popupWidth - Theme.space.sm)
+    }
+
+    function popupY(button, popupHeight) {
+        const top = button.mapToItem(overlay, 0, 0).y
+        return Math.max(Theme.space.sm - top, Math.min(0, overlay.height - popupHeight - Theme.space.sm - top))
+    }
+
     function revealFromTitle() {
-        if (!editing && !mini && !cameraLocked && !toolbarPinned && toolbarMode === "dwell")
+        if (!editing && !mini && !cameraLocked && !toolbarPinned && !toolbarOnRight
+                && toolbarMode === "dwell")
             toolbar.reveal()
     }
 
@@ -281,6 +297,10 @@ Item {
         if (toolbarPinned)
             toolbar.reveal()
     }
+    onToolbarAlwaysShownChanged: {
+        if (overlay.toolbarAlwaysShown)
+            toolbar.reveal()
+    }
 
     onEditingChanged: {
         overlay.closeChosen = false
@@ -310,7 +330,7 @@ Item {
     Component.onCompleted: {
         internal.attachChrome()
         internal.hintFirstRun()
-        if (toolbarPinned)
+        if (toolbarPinned || toolbarAlwaysShown)
             toolbar.reveal()
     }
 
@@ -322,6 +342,8 @@ Item {
         property var prompts: []
         property real fullToolbarWidth: 0
         property real compactToolbarWidth: 0
+        property real fullToolbarHeight: 0
+        property real compactToolbarHeight: 0
         property bool startOpened: false
         property bool focusStart: false
         property int convertTicket: 0
@@ -332,7 +354,9 @@ Item {
                     || overlay.toolbarMode !== "dwell")
                 return
             hinted = true
-            overlay.toast(qsTr("Rest the pointer at the top to show the toolbar"), "info")
+            overlay.toast(overlay.toolbarOnRight
+                          ? qsTr("Rest the pointer at the right side to show the toolbar")
+                          : qsTr("Rest the pointer at the top to show the toolbar"), "info")
             AppSettings.markMirrorToolbarHintShown()
         }
 
@@ -693,6 +717,7 @@ Item {
     ToolbarRevealArea {
         anchors.fill: parent
         toolbar: toolbar
+        vertical: overlay.toolbarOnRight
         zoneTop: titleBar.fixedRow ? titleBar.height : 0
         active: !overlay.cameraLocked && !overlay.toolbarPinned && overlay.toolbarMode === "dwell" && !overlay.mini
                 && !overlay.editing
@@ -873,19 +898,36 @@ Item {
     FloatingToolbar {
         id: toolbar
 
-        readonly property bool compact: overlay.width < internal.fullToolbarWidth + 2 * Theme.space.sm
-        readonly property bool tight: compact && overlay.width < internal.compactToolbarWidth + 2 * Theme.space.sm
+        readonly property bool compact: overlay.toolbarOnRight
+            ? overlay.height < internal.fullToolbarHeight + 2 * Theme.space.sm
+            : overlay.width < internal.fullToolbarWidth + 2 * Theme.space.sm
+        readonly property bool tight: compact && (overlay.toolbarOnRight
+            ? overlay.height < internal.compactToolbarHeight + 2 * Theme.space.sm
+            : overlay.width < internal.compactToolbarWidth + 2 * Theme.space.sm)
 
         visible: !overlay.mini && !overlay.editing && opacity > 0
+        vertical: overlay.toolbarOnRight
 
         onImplicitWidthChanged: {
+            if (overlay.toolbarOnRight)
+                return
             if (!compact)
                 internal.fullToolbarWidth = implicitWidth
             else if (!tight)
                 internal.compactToolbarWidth = implicitWidth
         }
+        onImplicitHeightChanged: {
+            if (!overlay.toolbarOnRight)
+                return
+            if (!compact)
+                internal.fullToolbarHeight = implicitHeight
+            else if (!tight)
+                internal.compactToolbarHeight = implicitHeight
+        }
 
         x: {
+            if (overlay.toolbarOnRight)
+                return Math.max(Theme.space.xs, overlay.width - width - Theme.space.sm)
             const centered = Math.max(Theme.space.xs, (overlay.width - width) / 2)
             if (!overlay.toolbarPinned || overlay.pinnedTwoRows)
                 return centered
@@ -894,19 +936,23 @@ Item {
             return Math.max(Theme.space.x6l, Math.min(centered, beforeCaptions))
         }
         y: {
+            if (overlay.toolbarOnRight)
+                return Math.max(Theme.space.sm, (overlay.height - height) / 2)
             if (overlay.toolbarPinned)
                 return overlay.pinnedTwoRows ? titleBar.titleHeight : (Theme.size.toolbar - height) / 2
             return overlay.fullScreen ? Theme.space.md : titleBar.height + Theme.space.xs
         }
         flat: overlay.toolbarPinned
-        pinned: overlay.toolbarPinned || keymapMenu.visible || rotateMenu.visible || turnMenu.visible
-                || volumePanel.visible || moreMenu.visible || tasksMenu.visible || panelsMenu.visible || tour.running
+        pinned: overlay.toolbarPinned || overlay.toolbarAlwaysShown || keymapMenu.visible
+                || rotateMenu.visible || turnMenu.visible || volumePanel.visible || moreMenu.visible
+                || tasksMenu.visible || panelsMenu.visible || tour.running
 
         T.AbstractButton {
             id: syncCapsule
 
             objectName: "syncCapsule"
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenter: overlay.toolbarOnRight ? undefined : parent.verticalCenter
+            anchors.horizontalCenter: overlay.toolbarOnRight ? parent.horizontalCenter : undefined
             visible: overlay.syncRole === "master"
             implicitWidth: syncRow.implicitWidth + 2 * Theme.space.md
             implicitHeight: Theme.size.controlSmall
@@ -917,7 +963,8 @@ Item {
             onClicked: syncDialog.show()
 
             Tooltip {
-                y: syncCapsule.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? -width - Theme.space.xs : (syncCapsule.width - width) / 2
+                y: overlay.toolbarOnRight ? 0 : syncCapsule.height + Theme.space.xs
                 text: qsTr("Change or stop syncing")
                 visible: syncCapsule.hovered && !syncCapsule.down
             }
@@ -968,7 +1015,7 @@ Item {
             }
         }
 
-        ToolbarSeparator { visible: syncCapsule.visible }
+        ToolbarSeparator { visible: syncCapsule.visible && !overlay.toolbarOnRight }
 
         CommandButton {
             id: keymapButton
@@ -978,7 +1025,7 @@ Item {
             fallbackIcon: "keyboard"
         }
 
-        Item { width: Theme.space.xxs }
+        Item { width: Theme.space.xxs; visible: !overlay.toolbarOnRight }
 
         ToolbarButton {
             id: keymapMenuButton
@@ -995,7 +1042,9 @@ Item {
 
                 readonly property int firstProfile: 4
 
-                y: keymapMenuButton.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? overlay.popupX(keymapMenuButton, width) : 0
+                y: overlay.toolbarOnRight ? overlay.popupY(keymapMenuButton, height)
+                                          : keymapMenuButton.height + Theme.space.xs
                 onClosed: {
                     if (!internal.focusStart)
                         return
@@ -1127,13 +1176,13 @@ Item {
             }
         }
 
-        ToolbarSeparator {}
+        ToolbarSeparator { visible: !overlay.toolbarOnRight }
 
         CommandButton { id: backButton; commandState: backCommand; fallbackIcon: "arrow-left" }
         CommandButton { id: homeButton; commandState: homeCommand; fallbackIcon: "house" }
         CommandButton { id: appSwitchButton; commandState: appSwitchCommand; fallbackIcon: "square" }
 
-        ToolbarSeparator { visible: !toolbar.tight }
+        ToolbarSeparator { visible: !toolbar.tight && !overlay.toolbarOnRight }
 
         ToolbarButton {
             id: rotateButton
@@ -1157,8 +1206,9 @@ Item {
             Menu {
                 id: rotateMenu
 
-                x: (rotateButton.width - width) / 2
-                y: rotateButton.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? overlay.popupX(rotateButton, width) : (rotateButton.width - width) / 2
+                y: overlay.toolbarOnRight ? overlay.popupY(rotateButton, height)
+                                          : rotateButton.height + Theme.space.xs
 
                 CommandMenuItem { commandState: followCommand; choice: true }
                 CommandMenuItem { commandState: portraitCommand; choice: true }
@@ -1169,8 +1219,9 @@ Item {
                 id: turnMenu
 
                 objectName: "turnMenu"
-                x: (rotateButton.width - width) / 2
-                y: rotateButton.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? overlay.popupX(rotateButton, width) : (rotateButton.width - width) / 2
+                y: overlay.toolbarOnRight ? overlay.popupY(rotateButton, height)
+                                          : rotateButton.height + Theme.space.xs
 
                 MenuLabel { text: qsTr("Without adb, tell how the phone is held") }
                 TurnChoice { turn: 0; text: qsTr("Portrait") }
@@ -1182,8 +1233,9 @@ Item {
                 id: captureTurnMenu
 
                 objectName: "captureTurnMenu"
-                x: (rotateButton.width - width) / 2
-                y: rotateButton.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? overlay.popupX(rotateButton, width) : (rotateButton.width - width) / 2
+                y: overlay.toolbarOnRight ? overlay.popupY(rotateButton, height)
+                                          : rotateButton.height + Theme.space.xs
 
                 MenuLabel { text: qsTr("When the picture is landscape, the phone is") }
                 TurnChoice { turn: 1; text: qsTr("Landscape (turned left)") }
@@ -1206,8 +1258,9 @@ Item {
             T.Popup {
                 id: volumePanel
 
-                x: (volumeButton.width - width) / 2
-                y: volumeButton.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? overlay.popupX(volumeButton, width) : (volumeButton.width - width) / 2
+                y: overlay.toolbarOnRight ? overlay.popupY(volumeButton, height)
+                                          : volumeButton.height + Theme.space.xs
                 implicitWidth: implicitContentWidth + leftPadding + rightPadding
                 implicitHeight: implicitContentHeight + topPadding + bottomPadding
                 padding: Theme.space.xs
@@ -1254,8 +1307,9 @@ Item {
             Menu {
                 id: tasksMenu
 
-                x: (tasksButton.width - width) / 2
-                y: tasksButton.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? overlay.popupX(tasksButton, width) : (tasksButton.width - width) / 2
+                y: overlay.toolbarOnRight ? overlay.popupY(tasksButton, height)
+                                          : tasksButton.height + Theme.space.xs
 
                 MenuLabel { text: qsTr("Tasks on this phone") }
 
@@ -1342,8 +1396,10 @@ Item {
                 id: panelsMenu
 
                 objectName: "extensionPanelsMenu"
-                x: (extensionPanelsButton.width - width) / 2
-                y: extensionPanelsButton.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? overlay.popupX(extensionPanelsButton, width)
+                                          : (extensionPanelsButton.width - width) / 2
+                y: overlay.toolbarOnRight ? overlay.popupY(extensionPanelsButton, height)
+                                          : extensionPanelsButton.height + Theme.space.xs
 
                 MenuLabel { text: qsTr("Extension panels") }
 
@@ -1389,7 +1445,7 @@ Item {
             }
         }
 
-        ToolbarSeparator {}
+        ToolbarSeparator { visible: !overlay.toolbarOnRight }
 
         CommandButton { id: diagnosticsButton; commandState: diagnosticsCommand; fallbackIcon: "activity"; visible: !toolbar.compact }
         CommandButton {
@@ -1411,15 +1467,17 @@ Item {
             UiToolbarPanel {
                 id: toolbarPanel
 
-                x: moreButton.width - width
-                y: moreButton.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? overlay.popupX(moreButton, width) : moreButton.width - width
+                y: overlay.toolbarOnRight ? overlay.popupY(moreButton, height)
+                                          : moreButton.height + Theme.space.xs
             }
 
             Menu {
                 id: moreMenu
 
-                x: moreButton.width - width
-                y: moreButton.height + Theme.space.xs
+                x: overlay.toolbarOnRight ? overlay.popupX(moreButton, width) : moreButton.width - width
+                y: overlay.toolbarOnRight ? overlay.popupY(moreButton, height)
+                                          : moreButton.height + Theme.space.xs
 
                 CommandMenuItem { commandState: screenCommand; visible: toolbar.compact && commandState.enabled }
                 CommandMenuItem { commandState: diagnosticsCommand; visible: toolbar.compact && commandState.enabled }
@@ -1711,7 +1769,7 @@ Item {
             }
         }
 
-        ToolbarSeparator { visible: !toolbar.tight }
+        ToolbarSeparator { visible: !toolbar.tight && !overlay.toolbarOnRight }
 
         ToolbarButton {
             id: pinButton
@@ -1858,8 +1916,12 @@ Item {
         id: scriptPrompt
 
         objectName: "scriptPrompt"
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: toolbar.y + toolbar.height + Theme.space.sm
+        x: overlay.toolbarOnRight
+           ? Math.max(Theme.space.sm, toolbar.x - width - Theme.space.sm)
+           : (overlay.width - width) / 2
+        y: overlay.toolbarOnRight
+           ? Math.max(Theme.space.sm, Math.min(toolbar.y, overlay.height - height - Theme.space.sm))
+           : toolbar.y + toolbar.height + Theme.space.sm
         onAnswered: (request, json) => {
             DeviceManager.answerPrompt(overlay.serial, Number(request), json)
             overlay.nextPrompt()
@@ -1870,8 +1932,12 @@ Item {
         id: latencyCard
 
         objectName: "latencyCard"
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: toolbar.y + toolbar.height + Theme.space.sm
+        x: overlay.toolbarOnRight
+           ? Math.max(Theme.space.sm, toolbar.x - width - Theme.space.sm)
+           : (overlay.width - width) / 2
+        y: overlay.toolbarOnRight
+           ? Math.max(Theme.space.sm, Math.min(toolbar.y, overlay.height - height - Theme.space.sm))
+           : toolbar.y + toolbar.height + Theme.space.sm
         progress: overlay.latencyTest
         visible: shown && !overlay.mini && !overlay.editing
         onStopRequested: latencyCommand.trigger()
@@ -2162,8 +2228,9 @@ Item {
         parent: toastArea
         capsule: true
         y: overlay.editing ? Theme.space.sm
-                           : toolbar.y + toolbar.height + Theme.space.sm
-                             + (latencyCard.visible ? latencyCard.height + Theme.space.sm : 0)
+            : overlay.toolbarOnRight
+                ? Math.min(overlay.toastBelow, overlay.height - height - Theme.space.xxl)
+                : overlay.toastBelow
         onActionTriggered: DeviceManager.toastAction(overlay.serial, 0)
         onSecondActionTriggered: DeviceManager.toastAction(overlay.serial, 1)
     }

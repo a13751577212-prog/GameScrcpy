@@ -64,6 +64,8 @@ public:
     [[nodiscard]] bool separate(const QString& serial) const;
     [[nodiscard]] const QString& target() const noexcept { return m_cells.target(); }
     void setTarget(const QString& serial);
+    [[nodiscard]] const QString& master() const noexcept { return m_master; }
+    void setMaster(const QString& serial);
     [[nodiscard]] QRectF pictureShare(const QString& serial) const;
     void setKeymap(bool on);
     void setCameraLocked(bool locked);
@@ -82,6 +84,7 @@ public:
 signals:
     void closedByUser();
     void targetChosen(const QString& serial);
+    void cellFocused(const QString& serial);
     void ownWindowWanted(const QString& serial);
     void backToGridWanted(const QString& serial);
     void cellToggled(const QString& serial);
@@ -129,6 +132,7 @@ private:
     void followFrame(const QString& serial);
     void targetChanged();
     void focusTarget();
+    void focusUnderCursor(QPointF at);
     void applyPointer();
     void keepClip();
     void applyClaims();
@@ -147,6 +151,7 @@ private:
     QPointer<QQuickItem> m_hints;
     HintItems m_hintItems;
     QVariantList m_shownHints;
+    QString m_master;
     QString m_wheelSerial;
     QVariantMap m_wheel;
     GridCells::Metrics m_metrics;

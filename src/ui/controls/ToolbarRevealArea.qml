@@ -6,8 +6,10 @@ Item {
 
     required property FloatingToolbar toolbar
     property bool active: true
+    property bool vertical: false
     property int zoneTop: 0
     property int zoneHeight: Theme.size.toolbarReveal
+    property int zoneWidth: Theme.size.toolbarReveal
     property int dwell: Theme.motion.toolbarDwell
     property int cooldown: Theme.motion.toolbarCooldown
     readonly property bool hoveringTop: zoneHover.hovered
@@ -21,10 +23,10 @@ Item {
     }
 
     Item {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        y: area.zoneTop
-        height: area.zoneHeight
+        x: area.vertical ? parent.width - area.zoneWidth : 0
+        y: area.vertical ? 0 : area.zoneTop
+        width: area.vertical ? area.zoneWidth : parent.width
+        height: area.vertical ? parent.height : area.zoneHeight
 
         HoverHandler {
             id: zoneHover
@@ -53,11 +55,11 @@ Item {
         id: grip
 
         objectName: "grip"
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: area.zoneTop + Theme.space.xs + Theme.space.xxs
-        width: Theme.size.gripWidth
-        height: Theme.size.gripHeight
-        radius: height / 2
+        x: area.vertical ? parent.width - (area.zoneWidth + width) / 2 : (parent.width - width) / 2
+        y: area.vertical ? (parent.height - height) / 2 : area.zoneTop + Theme.space.xs + Theme.space.xxs
+        width: area.vertical ? Theme.size.gripHeight : Theme.size.gripWidth
+        height: area.vertical ? Theme.size.gripWidth : Theme.size.gripHeight
+        radius: area.vertical ? width / 2 : height / 2
         color: Theme.colors.grip
         opacity: zoneHover.hovered && area.active && !area.holding && !area.toolbar.shown ? 1 : 0
         visible: opacity > 0
@@ -73,8 +75,8 @@ Item {
 
     Item {
         anchors.centerIn: grip
-        width: Theme.size.gripTargetWidth
-        height: Theme.size.gripTargetHeight
+        width: area.vertical ? Theme.size.gripTargetHeight : Theme.size.gripTargetWidth
+        height: area.vertical ? Theme.size.gripTargetWidth : Theme.size.gripTargetHeight
 
         HoverHandler {
             enabled: area.active

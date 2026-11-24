@@ -349,6 +349,7 @@ public:
     Q_INVOKABLE void setGridMaster(const QString& serial);
     Q_INVOKABLE void toggleGridFollow(const QString& serial);
     Q_INVOKABLE void setGridFollowAll(bool on);
+    Q_INVOKABLE void gridNavigation(const QString& serial, const QString& command);
     Q_INVOKABLE void setAutoMirror(bool on);
     Q_INVOKABLE bool autoMirror() const noexcept { return m_autoMirror; }
 

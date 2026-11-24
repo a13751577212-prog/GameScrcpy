@@ -193,6 +193,9 @@ inline constexpr std::array<std::string_view, 2> kTitleBarModeNames{"fixed", "au
 enum class ToolbarMode : std::uint8_t { Dwell, Pinned, Shortcut };
 inline constexpr std::array<std::string_view, 3> kToolbarModeNames{"dwell", "pinned", "shortcut"};
 
+enum class ToolbarSide : std::uint8_t { Right, Top };
+inline constexpr std::array<std::string_view, 2> kToolbarSideNames{"right", "top"};
+
 enum class StatusCapsule : std::uint8_t { Auto, Always, Hidden };
 inline constexpr std::array<std::string_view, 3> kStatusCapsuleNames{"auto", "always", "hidden"};
 
@@ -204,6 +207,7 @@ struct Display {
     std::int32_t sharpness = 0;
     TitleBarMode titleBar = TitleBarMode::Fixed;
     ToolbarMode toolbar = ToolbarMode::Pinned;
+    ToolbarSide toolbarSide = ToolbarSide::Right;
     StatusCapsule statusCapsule = StatusCapsule::Auto;
     bool phoneStatus = false;
     bool cameraGlow = true;
@@ -242,6 +246,12 @@ struct Display {
                                                                "always goes to the phone. Pinned keeps it in a bar "
                                                                "above the picture."),
                   .keywords = GS_TRANSLATE_NOOP("Settings", "toolbar title bar pin buttons"),
+                  .live = true});
+        v.choice("toolbarSide", m.toolbarSide, kToolbarSideNames,
+                 {.title = GS_TRANSLATE_NOOP("Settings", "Toolbar position"),
+                  .description = GS_TRANSLATE_NOOP("Settings", "Shows a mirror window's toolbar down its right side "
+                                                                "or across its top. Open mirror windows change at once."),
+                  .keywords = GS_TRANSLATE_NOOP("Settings", "toolbar position side right top vertical horizontal"),
                   .live = true});
         v.choice("statusCapsule", m.statusCapsule, kStatusCapsuleNames,
                  {.title = GS_TRANSLATE_NOOP("Settings", "Status capsule"),

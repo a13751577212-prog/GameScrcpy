@@ -7515,12 +7515,12 @@
 <context>
     <name>GridOverlay</name>
     <message>
-        <source>Keys and mouse go to: %1</source>
-        <translation>键鼠给：%1</translation>
+        <source>Sync master: %1</source>
+        <translation>同步主控：%1</translation>
     </message>
     <message>
-        <source>Click a cell to toggle whether it follows</source>
-        <translation>点一格切换它是否跟随</translation>
+        <source>Click a frame to toggle following</source>
+        <translation>点边框切换跟随</translation>
     </message>
     <message>
         <source>Select all</source>
@@ -11396,6 +11396,10 @@
     <message>
         <source>You are closing the window while %1 has changes that are not saved.</source>
         <translation>正在关闭窗口，%1 还有没保存的改动。</translation>
+    </message>
+    <message>
+        <source>Rest the pointer at the right side to show the toolbar</source>
+        <translation>把指针停在右侧可显示工具栏</translation>
     </message>
 </context>
 <context>
@@ -18840,6 +18844,18 @@
         <source>Compatible with OpenAI covers OpenAI, DeepSeek, Qwen, Kimi, a local Ollama and many more through the Chat Completions protocol; OpenAI Responses is OpenAI&apos;s newer protocol; Anthropic is Claude. Each keeps its own address, model and API key. Extensions can add more services, which bring their own models.</source>
         <translation>“兼容 OpenAI”经 Chat Completions 协议接 OpenAI、DeepSeek、通义千问、Kimi、本机的 Ollama 等很多服务；“OpenAI Responses”是 OpenAI 较新的协议；Anthropic 就是 Claude。每种各自记住地址、模型和 API 密钥。扩展还可以添加更多服务，各自带有自己的模型。</translation>
     </message>
+    <message>
+        <source>Toolbar position</source>
+        <translation>工具栏位置</translation>
+    </message>
+    <message>
+        <source>Shows a mirror window's toolbar down its right side or across its top. Open mirror windows change at once.</source>
+        <translation>独立窗口的工具栏显示在右侧或顶部。已打开的窗口会立即生效。</translation>
+    </message>
+    <message>
+        <source>toolbar position side right top vertical horizontal</source>
+        <translation>工具栏 位置 右侧 顶部 竖向 横向</translation>
+    </message>
 </context>
 <context>
     <name>SettingsCatalog</name>
@@ -19363,6 +19379,14 @@
         <translation>
             <numerusform>%n 项单独设置</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Right side</source>
+        <translation>右侧</translation>
+    </message>
+    <message>
+        <source>Top</source>
+        <translation>顶部</translation>
     </message>
 </context>
 <context>

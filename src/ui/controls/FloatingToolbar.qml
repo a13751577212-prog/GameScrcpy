@@ -6,6 +6,7 @@ Item {
     id: toolbar
 
     default property alias content: row.data
+    property bool vertical: false
     property bool pinned: false
     property bool blocked: false
     property bool flat: false
@@ -27,12 +28,30 @@ Item {
         internal.revealed = false
     }
 
-    implicitWidth: row.implicitWidth + 2 * Theme.space.xs
-    implicitHeight: Theme.size.toolbar
+    function distribute() {
+        const from = vertical ? row : column
+        const to = vertical ? column : row
+        const items = []
+        for (let i = 0; i < from.children.length; ++i)
+            items.push(from.children[i])
+        for (const item of items) {
+            item.parent = to
+            if (vertical)
+                item.x = 0
+            else
+                item.y = 0
+        }
+    }
+
+    implicitWidth: (vertical ? column.implicitWidth : row.implicitWidth) + 2 * Theme.space.xs
+    implicitHeight: vertical ? column.implicitHeight + 2 * Theme.space.xs : Theme.size.toolbar
     opacity: internal.revealed ? 1 : 0
     visible: opacity > 0
 
     Accessible.role: Accessible.ToolBar
+
+    onVerticalChanged: distribute()
+    Component.onCompleted: distribute()
 
     onPinnedChanged: internal.schedule()
     onHideDelayChanged: internal.schedule()
@@ -79,7 +98,8 @@ Item {
     Item {
         anchors.fill: parent
         transform: Translate {
-            y: (toolbar.opacity - 1) * (Theme.space.xs + Theme.space.xxs)
+            x: toolbar.vertical ? (toolbar.opacity - 1) * (Theme.space.xs + Theme.space.xxs) : 0
+            y: toolbar.vertical ? 0 : (toolbar.opacity - 1) * (Theme.space.xs + Theme.space.xxs)
         }
 
         RectangularShadow {
@@ -97,7 +117,7 @@ Item {
             objectName: "face"
             anchors.fill: parent
             visible: !toolbar.flat
-            radius: height / 2
+            radius: toolbar.vertical ? width / 2 : height / 2
             color: Theme.reducedTransparency ? Theme.colors.bgElevated : Theme.colors.bgFrosted
             border.width: Theme.size.stroke
             border.color: Theme.colors.strokeStrong
@@ -105,6 +125,13 @@ Item {
 
         Row {
             id: row
+
+            anchors.centerIn: parent
+            spacing: Theme.space.xxs
+        }
+
+        Column {
+            id: column
 
             anchors.centerIn: parent
             spacing: Theme.space.xxs

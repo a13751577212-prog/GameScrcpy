@@ -151,6 +151,7 @@ public slots:
 
 private slots:
     void followPinnedBar();
+    void followToolbarSide();
     void followPhoneHints();
 
 protected:
@@ -197,6 +198,8 @@ private:
     qreal m_aspect = 0;
     bool m_fullScreen = false;
     bool m_toolbarPinned = false;
+    bool m_toolbarPinnedRequest = false;
+    bool m_toolbarOnRight = false;
     int m_pinnedBar = 0;
     bool m_titleFixed = true;
     int m_titleHeight = 40;
