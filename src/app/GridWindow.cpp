@@ -251,7 +251,6 @@ void GridWindow::setTarget(const QString& serial)
 {
     if (m_cells.setTarget(serial)) {
         targetChanged();
-        emit targetChosen(serial);
     }
 }
 

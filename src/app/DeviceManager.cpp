@@ -3354,6 +3354,10 @@ void DeviceManager::setGridMaster(const QString& serial)
     if (m_gridMaster == serial) {
         stopSync(serial);
         m_gridMaster.clear();
+        if (m_grid != nullptr) {
+            m_grid->releaseTarget();
+        }
+        applyFollowSelection();
         return;
     }
     if (!m_gridMaster.isEmpty()) {
@@ -3363,6 +3367,7 @@ void DeviceManager::setGridMaster(const QString& serial)
     if (m_grid != nullptr) {
         m_grid->setTarget(serial);
     }
+    foregroundChanged();
     applyFollowSelection();
 }
 
