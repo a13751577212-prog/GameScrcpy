@@ -14,6 +14,7 @@
 #include <QKeyEvent>
 #include <QMetaObject>
 #include <QMouseEvent>
+#include <QObject>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QResizeEvent>
@@ -44,9 +45,10 @@ constexpr std::chrono::milliseconds kClipCheck{100};
 
 double gridWindowShare()
 {
-    const AppSettings* settings = AppSettings::instance();
+    const QObject* settings = AppSettings::instance();
     const QVariant value = settings != nullptr
-                               ? settings->values().value(QStringLiteral("display.gridWindowShare"))
+                               ? settings->property("values").toMap().value(
+                                     QStringLiteral("display.gridWindowShare"))
                                : QVariant{};
     bool ok = false;
     const int percent = value.toInt(&ok);
@@ -71,8 +73,8 @@ GridWindow::GridWindow(const render::GraphicsDevice& graphics)
     setColor(Qt::black);
     setMinimumSize(QSize(kLeastWidth, kLeastHeight));
     m_share = gridWindowShare();
-    if (AppSettings* settings = AppSettings::instance(); settings != nullptr) {
-        connect(settings, &AppSettings::valuesChanged, this, &GridWindow::followShare);
+    if (QObject* settings = AppSettings::instance(); settings != nullptr) {
+        connect(settings, SIGNAL(valuesChanged()), this, SLOT(followShare()));
     }
     if (const QStyleHints* hints = QGuiApplication::styleHints(); hints != nullptr) {
         m_cells.setDoubleClick(hints->mouseDoubleClickInterval(), hints->mouseDoubleClickDistance());

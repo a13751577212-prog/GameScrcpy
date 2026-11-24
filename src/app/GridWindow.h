@@ -98,6 +98,9 @@ signals:
 public slots:
     void releaseTarget();
 
+private slots:
+    void followShare();
+
 protected:
     bool event(QEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
@@ -129,7 +132,6 @@ private:
     [[nodiscard]] Fit fitWanted() const;
     void scheduleFit();
     void fitToCells();
-    void followShare();
     void followFrame(const QString& serial);
     void targetChanged();
     void focusTarget();

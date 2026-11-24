@@ -1,0 +1,70 @@
+name: Fast exe patch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fast-exe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    name: Windows app-only build
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      QSG_RHI_PREFER_SOFTWARE_RENDERER: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Reuse the Windows build
+        uses: actions/cache@v4
+        with:
+          path: build/ci
+          key: win-ci-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', '**/CMakeLists.txt', 'cmake/**', 'src/**/*.cpp', 'src/**/*.h', 'src/**/*.qml') }}-v1
+          restore-keys: |
+            win-ci-${{ runner.os }}-
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.1"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtshadertools
+          cache: true
+
+      - name: MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure the Windows client
+        shell: pwsh
+        run: |
+          $env:GS_QT_DIR = $env:QT_ROOT_DIR
+          cmake --preset ci
+
+      - name: Build the app target only
+        shell: pwsh
+        run: cmake --build --preset ci --target GameScrcpy
+
+      - name: Pack the small update patch
+        shell: pwsh
+        run: |
+          $exe = Get-Item -LiteralPath build\ci\bin\GameScrcpy.exe
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -LiteralPath $exe.FullName -DestinationPath dist\GameScrcpy-update-patch.zip -Force
+          Write-Host ("update patch packed from " + $exe.FullName)
+
+      - name: Upload the small update patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameScrcpy-update-patch
+          path: dist/GameScrcpy-update-patch.zip
+          if-no-files-found: error
+          retention-days: 30
