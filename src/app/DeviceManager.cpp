@@ -2791,6 +2791,7 @@ void DeviceManager::identified(const QString& serial, const std::optional<adb::D
     m_knownNames[serial] = {row.marketName, row.manufacturer, row.model};
     if (!info->id.empty()) {
         row.deviceId = QString::fromStdString(info->id);
+        adoptRemark(row);
         const std::string& key = info->id;
         settings::DeviceSettings device = m_settings.device(key);
         if (row.transportChosen) {
@@ -3335,7 +3336,7 @@ void DeviceManager::refreshGrid()
         m_grid->setLabel(serial, row.name(),
                          problem == StatusProblem::None ? QStringLiteral("ok") : QStringLiteral("warn"),
                          problemText(problem));
-        m_grid->setRemark(serial, m_remarks.value(row.serial));
+        m_grid->setRemark(serial, remarkOf(row));
         m_grid->setChecked(serial, !m_followOff.contains(row.serial));
         m_grid->setRate(serial, streaming(row) ? row.stats.value(QStringLiteral("fps"), -1.0).toDouble() : -1.0);
         GridCells::Sync sync;
@@ -3355,7 +3356,8 @@ void DeviceManager::refreshGrid()
 
 QString DeviceManager::deviceRemark(const QString& serial) const
 {
-    return m_remarks.value(serial);
+    const int at = indexOf(serial);
+    return at < 0 ? QString() : remarkOf(m_rows[static_cast<std::size_t>(at)]);
 }
 
 void DeviceManager::setDeviceRemark(const QString& serial, const QString& text)
@@ -3364,13 +3366,37 @@ void DeviceManager::setDeviceRemark(const QString& serial, const QString& text)
         return;
     }
     const QString clean = text.trimmed();
-    if (m_remarks.value(serial) == clean) {
+    const int rowIndex = indexOf(serial);
+    QString key;
+    if (rowIndex >= 0) {
+        const Row& row = m_rows[static_cast<std::size_t>(rowIndex)];
+        if (row.demo == nullptr && !row.deviceId.isEmpty()) {
+            key = QStringLiteral("id:") + row.deviceId;
+        }
+    }
+    const QString before = rowIndex < 0 ? m_legacyRemarks.value(serial)
+                                        : remarkOf(m_rows[static_cast<std::size_t>(rowIndex)]);
+    if (before == clean) {
         return;
     }
-    if (clean.isEmpty()) {
-        m_remarks.remove(serial);
-    } else {
-        m_remarks.insert(serial, clean);
+    if (!key.isEmpty()) {
+        m_remarks.remove(key);
+        const QString id = key.mid(3);
+        for (auto it = m_remarkIds.cbegin(); it != m_remarkIds.cend(); ++it) {
+            if (it.value() == id) {
+                m_legacyRemarks.remove(it.key());
+            }
+        }
+    }
+    m_legacyRemarks.remove(serial);
+    if (!clean.isEmpty()) {
+        // Not identified yet: keep the note under the connection number until
+        // adoptRemark() can pin it to the stable hardware id.
+        if (key.isEmpty()) {
+            m_legacyRemarks.insert(serial, clean);
+        } else {
+            m_remarks.insert(key, clean);
+        }
     }
     saveRemarks();
     if (!m_rows.empty()) {
@@ -3558,9 +3584,25 @@ void DeviceManager::loadRemarks()
         return;
     }
     const QJsonObject object = document.object();
+    const QJsonValue bindings = object.value(QStringLiteral("__ids"));
+    if (bindings.isObject()) {
+        const QJsonObject map = bindings.toObject();
+        for (auto it = map.begin(); it != map.end(); ++it) {
+            if (it.value().isString()) {
+                m_remarkIds.insert(it.key(), it.value().toString());
+            }
+        }
+    }
     for (auto it = object.begin(); it != object.end(); ++it) {
-        if (it.value().isString()) {
+        if (!it.value().isString() || it.key() == QStringLiteral("__ids")) {
+            continue;
+        }
+        // Notes written before v7.2 used the adb connection number as the key;
+        // that number changes after a reboot. Keep them for adoptRemark().
+        if (it.key().startsWith(QStringLiteral("id:"))) {
             m_remarks.insert(it.key(), it.value().toString());
+        } else {
+            m_legacyRemarks.insert(it.key(), it.value().toString());
         }
     }
 }
@@ -3579,13 +3621,68 @@ void DeviceManager::saveRemarks() const
     for (auto it = m_remarks.begin(); it != m_remarks.end(); ++it) {
         object.insert(it.key(), it.value());
     }
+    for (auto it = m_legacyRemarks.begin(); it != m_legacyRemarks.end(); ++it) {
+        if (!object.contains(it.key())) {
+            object.insert(it.key(), it.value());
+        }
+    }
+    if (!m_remarkIds.isEmpty()) {
+        QJsonObject bindings;
+        for (auto it = m_remarkIds.begin(); it != m_remarkIds.end(); ++it) {
+            bindings.insert(it.key(), it.value());
+        }
+        object.insert(QStringLiteral("__ids"), bindings);
+    }
     output.write(QJsonDocument(object).toJson(QJsonDocument::Compact));
+}
+
+QString DeviceManager::remarkOf(const Row& row) const
+{
+    if (row.demo == nullptr && !row.deviceId.isEmpty()) {
+        const QString text = m_remarks.value(QStringLiteral("id:") + row.deviceId);
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+    return m_legacyRemarks.value(row.serial);
+}
+
+void DeviceManager::adoptRemark(const Row& row)
+{
+    const QString id = row.deviceId;
+    if (id.isEmpty() || row.demo != nullptr) {
+        return;
+    }
+    m_remarkIds.insert(row.serial, id);
+    const QString key = QStringLiteral("id:") + id;
+    QStringList candidates;
+    if (m_legacyRemarks.contains(row.serial)) {
+        candidates.append(row.serial);
+    }
+    for (auto it = m_remarkIds.cbegin(); it != m_remarkIds.cend(); ++it) {
+        if (it.value() == id && !candidates.contains(it.key()) && m_legacyRemarks.contains(it.key())) {
+            candidates.append(it.key());
+        }
+    }
+    if (!m_remarks.contains(key) && !candidates.isEmpty()) {
+        const QString text = m_legacyRemarks.value(candidates.first());
+        if (!text.isEmpty()) {
+            m_remarks.insert(key, text);
+        }
+    }
+    for (const QString& old : candidates) {
+        m_legacyRemarks.remove(old);
+    }
+    saveRemarks();
+    if (m_grid != nullptr) {
+        refreshGrid();
+    }
 }
 
 int DeviceManager::remarkKey(const Row& row, int rank) const
 {
     const int state = std::clamp(rank, 0, 9999);
-    const QString text = m_remarks.value(row.serial);
+    const QString text = remarkOf(row);
     if (text.isEmpty()) {
         return 1000000 + state;
     }

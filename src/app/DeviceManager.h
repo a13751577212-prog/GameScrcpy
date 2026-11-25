@@ -656,6 +656,8 @@ private:
     void closeGrid();
     void loadRemarks();
     void saveRemarks() const;
+    [[nodiscard]] QString remarkOf(const Row& row) const;
+    void adoptRemark(const Row& row);
     [[nodiscard]] int remarkKey(const Row& row, int rank) const;
     [[nodiscard]] QStringList remarkOrder() const;
     [[nodiscard]] bool canAutoMirror(const Row& row) const;
@@ -889,7 +891,9 @@ private:
     QPointer<VisionWorkbench> m_vision;
     QString m_materialsClient;
     QPointer<GridWindow> m_grid;
-    QMap<QString, QString> m_remarks;
+    QMap<QString, QString> m_remarks;        // "id:<stable id>" -> remark
+    QMap<QString, QString> m_legacyRemarks; // old connection number -> remark
+    QMap<QString, QString> m_remarkIds;     // connection number -> stable id
     QSet<QString> m_followOff;
     QSet<QString> m_mirrorBlocked;
     QSet<QString> m_reconnectPending;
