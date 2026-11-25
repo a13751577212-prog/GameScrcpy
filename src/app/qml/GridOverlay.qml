@@ -352,15 +352,21 @@ Item {
             visible: button.tip !== "" && button.hovered && !button.down
         }
 
-        contentItem: Icon {
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: 1
-            name: button.iconName
-            size: Theme.size.iconSmall
-            color: !button.enabled ? Theme.colors.textTertiary
-                 : button.selected ? Theme.colors.accentText
-                 : button.hovered ? Theme.colors.textPrimary : Theme.colors.textSecondary
+        contentItem: Item {
+            // Qt stretches the content item to the whole button. Keep the glyph at its
+            // natural size and centred so it lines up with the remark text.
+            Icon {
+                width: Theme.size.iconSmall
+                height: Theme.size.iconSmall
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: 1
+                name: button.iconName
+                size: Theme.size.iconSmall
+                color: !button.enabled ? Theme.colors.textTertiary
+                     : button.selected ? Theme.colors.accentText
+                     : button.hovered ? Theme.colors.textPrimary : Theme.colors.textSecondary
+            }
         }
 
         background: Rectangle {
