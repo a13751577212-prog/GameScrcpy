@@ -353,6 +353,7 @@ public:
     Q_INVOKABLE void setGridFollowAll(bool on);
     Q_INVOKABLE void gridNavigation(const QString& serial, const QString& command);
     Q_INVOKABLE void gridScreen(const QString& serial, bool off);
+    Q_INVOKABLE int retryGridConnections();
     Q_INVOKABLE void setAutoMirror(bool on);
     Q_INVOKABLE bool autoMirror() const noexcept { return m_autoMirror; }
 

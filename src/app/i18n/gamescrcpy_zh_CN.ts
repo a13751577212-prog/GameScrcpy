@@ -7650,6 +7650,18 @@
         <source>Disconnect this phone</source>
         <translation>断开这台设备</translation>
     </message>
+    <message>
+        <source>Reconnect disconnected devices</source>
+        <translation>重新连接掉线的设备</translation>
+    </message>
+    <message>
+        <source>Reconnecting %1 phone(s)</source>
+        <translation>正在补连 %1 台</translation>
+    </message>
+    <message>
+        <source>Nothing to reconnect</source>
+        <translation>没有需要重连的设备</translation>
+    </message>
 </context>
 <context>
     <name>GuideHero</name>

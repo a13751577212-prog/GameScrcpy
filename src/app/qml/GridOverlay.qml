@@ -12,12 +12,12 @@ Item {
 
     property var cells: []
     readonly property var chosen: overlay.cells.find(entry => entry.master === true) ?? null
-    readonly property real topInset: titleBar.height + toolbar.height
+    readonly property real topInset: titleBar.height
     readonly property int footerHeight: Theme.size.control
-    readonly property int edge: Theme.size.gridHit
+    readonly property int edge: 0
     readonly property int gap: Theme.space.sm
     readonly property int margin: Theme.space.sm
-    readonly property int inset: Theme.size.focusRing
+    readonly property int inset: 0
     readonly property bool popupOpen: cellMenu.visible || syncDialog.visible || remarkEdit.visible
                                       || sizePanel.visible
     readonly property rect noticeArea: notice.visible ? Qt.rect(notice.x, notice.y, notice.width, notice.height)
@@ -117,8 +117,10 @@ Item {
                 return
             chrome.window = overlay.Window.window
             chromeAttached = chrome.attach()
-            if (chromeAttached)
-                chrome.setHitTestVisible(titleIcon, true)
+            if (chromeAttached) {
+                for (const control of [titleIcon, retryButton, actions])
+                    chrome.setHitTestVisible(control, true)
+            }
         }
     }
 
@@ -193,10 +195,19 @@ Item {
     Item {
         id: titleBar
 
+        objectName: "gridTitleBar"
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
-        height: minimizeButton.implicitHeight
+        height: Theme.size.control + 2 * Theme.size.stroke
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: Theme.size.stroke
+            color: Theme.colors.strokeSubtle
+        }
 
         Button {
             id: titleIcon
@@ -213,17 +224,38 @@ Item {
         }
 
         Text {
+            id: gridTitle
+
             objectName: "gridTitle"
             anchors.left: titleIcon.right
             anchors.leftMargin: Theme.space.sm + Theme.space.xxs
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.max(0, captions.x - x - Theme.space.md)
+            width: Math.max(0, Math.min(implicitWidth, actions.x - x - Theme.space.md))
             textFormat: Text.PlainText
             text: overlay.Window.window !== null ? overlay.Window.window.title : ""
             elide: Text.ElideRight
             color: Theme.colors.textSecondary
             font.pixelSize: Theme.type.caption.size
             font.weight: Font.Medium
+        }
+
+        Button {
+            id: retryButton
+
+            objectName: "gridRetry"
+            anchors.left: gridTitle.right
+            anchors.leftMargin: Theme.space.sm
+            anchors.verticalCenter: parent.verticalCenter
+            small: true
+            tone: "ghost"
+            iconName: "refresh-cw"
+            text: ""
+            toolTip: qsTr("Reconnect disconnected devices")
+            onClicked: {
+                const count = DeviceManager.retryGridConnections()
+                overlay.toast(count > 0 ? qsTr("Reconnecting %1 phone(s)").arg(count)
+                                        : qsTr("Nothing to reconnect"))
+            }
         }
 
         Row {
@@ -236,6 +268,7 @@ Item {
             CaptionButton {
                 id: minimizeButton
 
+                height: parent.height
                 glyph: "\uE921"
                 onClicked: overlay.Window.window.showMinimized()
             }
@@ -243,6 +276,7 @@ Item {
             CaptionButton {
                 id: maximizeButton
 
+                height: parent.height
                 glyph: overlay.Window.visibility === Window.Maximized ? "\uE923" : "\uE922"
                 onClicked: {
                     if (overlay.Window.visibility === Window.Maximized)
@@ -255,138 +289,24 @@ Item {
             CaptionButton {
                 id: closeButton
 
+                height: parent.height
                 glyph: "\uE8BB"
                 destructive: true
                 onClicked: overlay.Window.window.close()
-            }
-        }
-    }
-
-    Item {
-        id: toolbar
-
-        readonly property real leftPadding: Theme.space.md + Theme.space.xxs
-        readonly property real rightPadding: Theme.space.sm + Theme.space.xxs
-
-        objectName: "gridToolbar"
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.top: titleBar.bottom
-        height: Theme.size.toolbar
-
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: Theme.size.stroke
-            color: Theme.colors.strokeSubtle
-        }
-
-        Rectangle {
-            id: who
-
-            readonly property bool aimed: overlay.chosen !== null
-
-            objectName: "gridTargetCapsule"
-            anchors.left: parent.left
-            anchors.leftMargin: toolbar.leftPadding
-            anchors.verticalCenter: parent.verticalCenter
-            implicitWidth: Theme.space.md + Theme.size.iconSmall + Theme.space.sm + whoText.implicitWidth
-                           + (aimed ? Theme.space.xs + release.implicitWidth + Theme.space.xxs : Theme.space.md)
-            width: Math.max(0, Math.min(implicitWidth, actions.x - x - Theme.space.md))
-            height: Theme.size.chip
-            radius: height / 2
-            color: aimed ? Theme.colors.accentSubtle : Theme.colors.statePress
-            clip: true
-
-            Icon {
-                id: whoIcon
-
-                anchors.left: parent.left
-                anchors.leftMargin: Theme.space.md
-                anchors.verticalCenter: parent.verticalCenter
-                name: "keyboard"
-                size: Theme.size.iconSmall
-                color: who.aimed ? Theme.colors.accentText : Theme.colors.textTertiary
-            }
-
-            Text {
-                id: whoText
-
-                objectName: "gridTargetText"
-                x: whoIcon.x + whoIcon.width + Theme.space.sm
-                anchors.verticalCenter: parent.verticalCenter
-                width: Math.max(0, (who.aimed ? release.x - Theme.space.xs : who.width - Theme.space.md) - x)
-                textFormat: Text.PlainText
-                text: who.aimed ? qsTr("Sync master: %1").arg(overlay.chosen.name)
-                                : qsTr("Click a frame or the link to toggle following")
-                elide: Text.ElideRight
-                color: who.aimed ? Theme.colors.accentText : Theme.colors.textSecondary
-                font.pixelSize: Theme.type.label.size
-                font.weight: who.aimed ? Font.DemiBold : Font.Medium
-            }
-
-            T.AbstractButton {
-                id: release
-
-                objectName: "gridRelease"
-                anchors.right: parent.right
-                anchors.rightMargin: Theme.space.xxs
-                anchors.verticalCenter: parent.verticalCenter
-                visible: who.aimed
-                implicitWidth: Theme.size.chip - 2 * Theme.space.xxs
-                implicitHeight: implicitWidth
-                hoverEnabled: true
-                focusPolicy: Qt.TabFocus
-                text: qsTr("Let go of the keys and mouse")
-                Accessible.name: text
-                onClicked: overlay.releaseWanted()
-
-                Tooltip {
-                    y: release.height + Theme.space.xs
-                    text: release.text
-                    visible: release.hovered && !release.down
-                }
-
-                contentItem: Item {
-                    Icon {
-                        anchors.centerIn: parent
-                        name: "x"
-                        size: Theme.size.iconSmall
-                        color: Theme.colors.accentText
-                    }
-                }
-
-                background: Rectangle {
-                    id: releaseFace
-
-                    radius: height / 2
-                    color: "transparent"
-
-                    StateLayer {
-                        anchors.fill: parent
-                        radius: releaseFace.radius
-                        hovered: release.hovered
-                        pressed: release.down
-                    }
-
-                    FocusRing {
-                        visible: release.visualFocus
-                        baseRadius: releaseFace.radius
-                    }
-                }
             }
         }
 
         Row {
             id: actions
 
-            anchors.right: parent.right
-            anchors.rightMargin: toolbar.rightPadding
+            anchors.right: captions.left
+            anchors.rightMargin: Theme.space.sm
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.space.sm
 
             Button {
+                id: settingsButton
+
                 objectName: "gridSettings"
                 anchors.verticalCenter: parent.verticalCenter
                 small: true
@@ -415,103 +335,6 @@ Item {
                 small: true
                 text: qsTr("Select none")
                 onClicked: DeviceManager.setGridFollowAll(false)
-            }
-
-            T.AbstractButton {
-                id: syncCapsule
-
-                readonly property int followers: overlay.chosen?.syncCount ?? 0
-                readonly property string hue: overlay.hueOf(overlay.chosen?.syncTone ?? -1)
-
-                objectName: "gridSyncCapsule"
-                anchors.verticalCenter: parent.verticalCenter
-                visible: overlay.chosen?.syncRole === "master"
-                implicitWidth: syncRow.implicitWidth + 2 * Theme.space.md
-                implicitHeight: Theme.size.controlSmall
-                hoverEnabled: true
-                focusPolicy: Qt.TabFocus
-                text: qsTr("Syncing · %n phone(s)", "", syncCapsule.followers)
-                Accessible.name: text
-                onClicked: overlay.openSync(overlay.chosen?.serial ?? "")
-
-                Tooltip {
-                    y: syncCapsule.height + Theme.space.xs
-                    text: qsTr("Change or stop syncing")
-                    visible: syncCapsule.hovered && !syncCapsule.down
-                }
-
-                contentItem: Item {
-                    Row {
-                        id: syncRow
-
-                        anchors.centerIn: parent
-                        spacing: Theme.space.xs + Theme.space.xxs
-
-                        Rectangle {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Theme.size.pillDot
-                            height: width
-                            radius: width / 2
-                            color: Theme.toneInk(syncCapsule.hue)
-                        }
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            textFormat: Text.PlainText
-                            text: syncCapsule.text
-                            color: Theme.colors.textPrimary
-                            font.pixelSize: Theme.type.caption.size
-                            font.weight: Font.Medium
-                        }
-                    }
-                }
-
-                background: Rectangle {
-                    id: syncFace
-
-                    radius: height / 2
-                    color: Theme.toneFill(syncCapsule.hue)
-
-                    StateLayer {
-                        anchors.fill: parent
-                        radius: syncFace.radius
-                        hovered: syncCapsule.hovered
-                        pressed: syncCapsule.down
-                    }
-
-                    FocusRing {
-                        visible: syncCapsule.visualFocus
-                        baseRadius: syncFace.radius
-                    }
-                }
-            }
-
-            Button {
-                id: syncButton
-
-                objectName: "gridSync"
-                anchors.verticalCenter: parent.verticalCenter
-                tone: "ghost"
-                small: true
-                iconName: "sync"
-                text: qsTr("Sync…")
-                enabled: overlay.chosen !== null && overlay.chosen.syncRole !== "follower"
-                focusPolicy: Qt.TabFocus
-                onClicked: overlay.openSync(overlay.chosen?.serial ?? "")
-            }
-
-            Button {
-                id: openButton
-
-                objectName: "gridOwnWindow"
-                anchors.verticalCenter: parent.verticalCenter
-                tone: "ghost"
-                small: true
-                iconName: "popout"
-                text: qsTr("Open in its own window")
-                enabled: overlay.chosen !== null
-                focusPolicy: Qt.TabFocus
-                onClicked: DeviceManager.showWindow(overlay.chosen?.serial ?? "")
             }
         }
     }
@@ -581,51 +404,12 @@ Item {
 
                 readonly property color edge: cell.chosen ? Theme.colors.accent
                                            : cell.following ? Theme.colors.info : Theme.colors.strokeSubtle
-                readonly property bool marked: cell.chosen || cell.following
-
                 objectName: "gridFrame"
                 anchors.fill: parent
                 radius: Theme.radius.lg
                 color: Theme.colors.bgRaised
                 border.width: Theme.size.stroke
                 border.color: gridFrame.edge
-            }
-
-            Repeater {
-                model: gridFrame.marked ? 4 : 0
-
-                delegate: Item {
-                    id: corner
-
-                    required property int index
-                    readonly property real cornerLen: Theme.space.sm + Theme.space.xxs
-                    readonly property real cornerLine: Theme.size.edgeLine
-                    readonly property real cornerOffset: overlay.inset + Theme.space.xxs
-                    readonly property bool atRight: index === 1 || index === 2
-                    readonly property bool atBottom: index === 2 || index === 3
-
-                    x: corner.atRight ? cell.width - corner.cornerOffset - corner.cornerLen : corner.cornerOffset
-                    y: corner.atBottom ? cell.height - corner.cornerOffset - corner.cornerLen : corner.cornerOffset
-                    width: corner.cornerLen
-                    height: corner.cornerLen
-                    z: 2
-
-                    Rectangle {
-                        x: 0
-                        y: corner.atBottom ? corner.cornerLen - corner.cornerLine : 0
-                        width: corner.cornerLen
-                        height: corner.cornerLine
-                        color: gridFrame.edge
-                    }
-
-                    Rectangle {
-                        x: corner.atRight ? corner.cornerLen - corner.cornerLine : 0
-                        y: 0
-                        width: corner.cornerLine
-                        height: corner.cornerLen
-                        color: gridFrame.edge
-                    }
-                }
             }
 
             Rectangle {

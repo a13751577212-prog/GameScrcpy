@@ -3403,6 +3403,21 @@ void DeviceManager::setGridFollowAll(bool on)
     applyFollowSelection();
 }
 
+int DeviceManager::retryGridConnections()
+{
+    QStringList pending;
+    for (const Row& row : m_rows) {
+        if (m_followOff.contains(row.serial) || active(row.session.phase)) {
+            continue;
+        }
+        pending.append(row.serial);
+    }
+    for (const QString& serial : pending) {
+        connectDevice(serial);
+    }
+    return static_cast<int>(pending.size());
+}
+
 void DeviceManager::setAutoMirror(bool on)
 {
     m_autoMirror = on;
