@@ -20,7 +20,6 @@ Item {
     readonly property int margin: Theme.space.sm
     readonly property int inset: 0
     readonly property bool popupOpen: cellMenu.visible || syncDialog.visible || remarkEdit.visible
-                                      || sizePanel.visible
     readonly property rect noticeArea: notice.visible ? Qt.rect(notice.x, notice.y, notice.width, notice.height)
                                                       : Qt.rect(0, 0, 0, 0)
     readonly property var syncHues: ["azure", "teal", "rose", "lime", "amber", "orange"].filter(
@@ -127,7 +126,7 @@ Item {
             chrome.window = overlay.Window.window
             chromeAttached = chrome.attach()
             if (chromeAttached) {
-                for (const control of [titleIcon, retryButton, actions])
+                for (const control of [retryButton, actions])
                     chrome.setHitTestVisible(control, true)
             }
         }
@@ -218,26 +217,12 @@ Item {
             color: Theme.colors.strokeSubtle
         }
 
-        Button {
-            id: titleIcon
-
-            objectName: "gridWindowSize"
-            anchors.left: parent.left
-            anchors.leftMargin: Theme.space.md
-            anchors.verticalCenter: parent.verticalCenter
-            small: true
-            tone: "ghost"
-            iconName: "layout-grid"
-            text: qsTr("Window sizes")
-            onClicked: sizePanel.visible ? sizePanel.close() : sizePanel.open()
-        }
-
         Text {
             id: gridTitle
 
             objectName: "gridTitle"
-            anchors.left: titleIcon.right
-            anchors.leftMargin: Theme.space.sm + Theme.space.xxs
+            anchors.left: parent.left
+            anchors.leftMargin: Theme.space.md
             anchors.verticalCenter: parent.verticalCenter
             width: Math.max(0, Math.min(implicitWidth, actions.x - x - Theme.space.md))
             textFormat: Text.PlainText
@@ -398,6 +383,13 @@ Item {
             readonly property bool following: !chosen && !away && entry.checked === true
             readonly property bool narrow: width < 300
             readonly property real middleGap: Theme.size.controlSmall * 2 + Theme.space.md
+            // The phone picture keeps its own aspect ratio, so the frame follows it
+            // instead of the whole cell. Without a live picture the whole cell is framed.
+            readonly property bool hasPicture: (entry.pictureWidth ?? 0) > 0 && (entry.pictureHeight ?? 0) > 0
+            readonly property real frameX: hasPicture ? (entry.pictureX ?? 0) - x - Theme.size.edgeLine : 0
+            readonly property real frameY: hasPicture ? (entry.pictureY ?? 0) - y - Theme.size.edgeLine : 0
+            readonly property real frameW: hasPicture ? (entry.pictureWidth ?? 0) + 2 * Theme.size.edgeLine : width
+            readonly property real frameH: hasPicture ? (entry.pictureHeight ?? 0) + 2 * Theme.size.edgeLine : height
 
             objectName: "gridCell"
             x: entry.x ?? 0
@@ -437,8 +429,11 @@ Item {
 
             Rectangle {
                 objectName: "gridFrameHalo"
-                anchors.fill: parent
-                radius: Theme.radius.lg
+                x: cell.frameX
+                y: cell.frameY
+                width: cell.frameW
+                height: cell.frameH
+                radius: Theme.radius.xs
                 color: "transparent"
                 border.width: Theme.size.edgeLine * 2 + Theme.size.stroke
                 border.color: gridFrame.edge
@@ -447,8 +442,11 @@ Item {
 
             Rectangle {
                 objectName: "gridFrameLine"
-                anchors.fill: parent
-                radius: Theme.radius.lg
+                x: cell.frameX
+                y: cell.frameY
+                width: cell.frameW
+                height: cell.frameH
+                radius: Theme.radius.xs
                 color: "transparent"
                 border.width: Theme.size.edgeLine
                 border.color: gridFrame.edge
@@ -676,93 +674,6 @@ Item {
             text: qsTr("No phone is mirroring")
             color: Theme.colors.textSecondary
             font.pixelSize: Theme.type.body.size
-        }
-    }
-
-    T.Popup {
-        id: sizePanel
-
-        objectName: "gridSizePanel"
-        x: Theme.space.md
-        y: titleBar.height + Theme.space.xs
-        padding: Theme.space.md
-        modal: true
-        dim: false
-        background: PopupSurface {}
-
-        contentItem: Column {
-            spacing: Theme.space.md
-
-            Text {
-                text: qsTr("Window sizes")
-                textFormat: Text.PlainText
-                color: Theme.colors.textPrimary
-                font.pixelSize: Theme.type.label.size
-                font.weight: Font.DemiBold
-            }
-
-            Column {
-                spacing: Theme.space.xs
-
-                Text {
-                    text: qsTr("Grid window size")
-                    textFormat: Text.PlainText
-                    color: Theme.colors.textSecondary
-                    font.pixelSize: Theme.type.caption.size
-                }
-
-                Slider {
-                    id: gridSizeSlider
-
-                    from: 40
-                    to: 100
-                    stepSize: 5
-                    valueText: Math.round(value) + "%"
-                    onMoved: AppSettings.setValue("display.gridWindowShare", Math.round(value))
-
-                    Binding {
-                        target: gridSizeSlider
-                        property: "value"
-                        value: AppSettings.values["display.gridWindowShare"] ?? 80
-                    }
-                }
-            }
-
-            Column {
-                spacing: Theme.space.xs
-
-                Text {
-                    text: qsTr("Mirror window size")
-                    textFormat: Text.PlainText
-                    color: Theme.colors.textSecondary
-                    font.pixelSize: Theme.type.caption.size
-                }
-
-                Slider {
-                    id: mirrorSizeSlider
-
-                    from: 40
-                    to: 100
-                    stepSize: 5
-                    valueText: Math.round(value) + "%"
-                    onMoved: AppSettings.setValue("display.mirrorWindowShare", Math.round(value))
-
-                    Binding {
-                        target: mirrorSizeSlider
-                        property: "value"
-                        value: AppSettings.values["display.mirrorWindowShare"] ?? 85
-                    }
-                }
-            }
-
-            Text {
-                width: Math.max(gridSizeSlider.implicitWidth, mirrorSizeSlider.implicitWidth)
-                text: qsTr("Kept after a restart. Open windows change at once.")
-                textFormat: Text.PlainText
-                wrapMode: Text.Wrap
-                color: Theme.colors.textTertiary
-                font.pixelSize: Theme.type.caption.size
-            }
         }
     }
 

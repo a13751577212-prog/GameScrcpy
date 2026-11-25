@@ -100,6 +100,7 @@ public slots:
 
 private slots:
     void followShare();
+    void commitSize();
 
 protected:
     bool event(QEvent* event) override;
@@ -159,6 +160,8 @@ private:
     QVariantMap m_wheel;
     GridCells::Metrics m_metrics;
     double m_share = 0.8;
+    QTimer m_sizeCommit;
+    QSize m_programSize;
     int m_top = 40;
     bool m_layoutQueued = false;
     Fit m_fitted;

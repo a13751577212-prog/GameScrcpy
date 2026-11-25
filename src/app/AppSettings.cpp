@@ -425,6 +425,33 @@ bool AppSettings::placeWindow(QWindow* window, const QString& which)
     return saved.width > 0 && saved.maximized;
 }
 
+QSize AppSettings::windowShares(const QString& which) const
+{
+    const settings::WindowShares& saved = m_file.document().windowShares;
+    return which == QStringLiteral("mirror") ? QSize(saved.mirrorWidth, saved.mirrorHeight)
+                                              : QSize(saved.gridWidth, saved.gridHeight);
+}
+
+void AppSettings::rememberWindowShares(const QString& which, int widthPercent, int heightPercent)
+{
+    settings::Settings next = m_file.document();
+    settings::WindowShares& saved = next.windowShares;
+    if (which == QStringLiteral("mirror")) {
+        saved.mirrorWidth = widthPercent;
+        saved.mirrorHeight = heightPercent;
+    } else {
+        saved.gridWidth = widthPercent;
+        saved.gridHeight = heightPercent;
+    }
+    if (next == m_file.document()) {
+        return;
+    }
+    // Written straight to the document: no valuesChanged signal, so the window
+    // that was just dragged is never resized again by its own setting.
+    m_file.update(next);
+    m_file.flush();
+}
+
 settings::DeviceSettings AppSettings::device(const std::string& id) const
 {
     const auto& byId = m_devices.document().byId;

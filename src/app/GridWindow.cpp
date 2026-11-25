@@ -39,6 +39,7 @@ constexpr qreal kHintsZ = 0.5;
 constexpr qreal kPointerZ = 1;
 constexpr double kDefaultGridShare = 0.8;
 constexpr int kSizeSlack = 2;
+constexpr int kSizeSettle = 350;
 constexpr int kLeastWidth = 480;
 constexpr int kLeastHeight = 320;
 constexpr std::chrono::milliseconds kClipCheck{100};
@@ -73,7 +74,9 @@ GridWindow::GridWindow(const render::GraphicsDevice& graphics)
     setColor(Qt::black);
     setMinimumSize(QSize(kLeastWidth, kLeastHeight));
     m_share = gridWindowShare();
-    if (QObject* settings = AppSettings::instance(); settings != nullptr) {
+    AppSettings* settings = AppSettings::instance();
+    const QSize saved = settings != nullptr ? settings->windowShares(QStringLiteral("grid")) : QSize();
+    if (settings != nullptr) {
         connect(settings, SIGNAL(valuesChanged()), this, SLOT(followShare()));
     }
     if (const QStyleHints* hints = QGuiApplication::styleHints(); hints != nullptr) {
@@ -81,9 +84,16 @@ GridWindow::GridWindow(const render::GraphicsDevice& graphics)
     }
     if (const QScreen* primary = QGuiApplication::primaryScreen(); primary != nullptr) {
         const QRect area = primary->availableGeometry();
-        const QSize wanted(qRound(area.width() * m_share), qRound(area.height() * m_share));
+        const double widthShare = saved.width() > 0 ? saved.width() / 100.0 : m_share;
+        const double heightShare = saved.height() > 0 ? saved.height() / 100.0 : m_share;
+        const QSize wanted(qRound(area.width() * widthShare), qRound(area.height() * heightShare));
         setGeometry(QRect(area.center() - QPoint(wanted.width() / 2, wanted.height() / 2), wanted));
+        m_programSize = wanted;
+        m_userSized = saved.width() > 0 && saved.height() > 0;
     }
+    m_sizeCommit.setSingleShot(true); // source-rule-allow R9: a debounce; the drag settles before it is saved
+    m_sizeCommit.setInterval(kSizeSettle);
+    connect(&m_sizeCommit, &QTimer::timeout, this, &GridWindow::commitSize);
     m_clipGuard.setInterval(kClipCheck);
     connect(&m_clipGuard, &QTimer::timeout, this, &GridWindow::keepClip);
     updateTitle();
@@ -551,6 +561,7 @@ void GridWindow::keyPressEvent(QKeyEvent* event)
 
 void GridWindow::resizeEvent(QResizeEvent* event)
 {
+    const bool dragged = event->spontaneous();
     QQuickWindow::resizeEvent(event);
     if (m_overlay != nullptr) {
         m_overlay->setSize(size());
@@ -559,6 +570,33 @@ void GridWindow::resizeEvent(QResizeEvent* event)
         m_hints->setSize(size());
     }
     layoutCells();
+    if (dragged && isVisible() && size() != m_programSize
+        && !windowStates().testAnyFlags(Qt::WindowMinimized | Qt::WindowMaximized | Qt::WindowFullScreen)) {
+        m_sizeCommit.start();
+    }
+}
+
+void GridWindow::commitSize()
+{
+    m_sizeCommit.stop();
+    const QScreen* where = screen();
+    if (where == nullptr || !isVisible()
+        || windowStates().testAnyFlags(Qt::WindowMinimized | Qt::WindowMaximized | Qt::WindowFullScreen)) {
+        return;
+    }
+    const QRect area = where->availableGeometry();
+    if (area.width() <= 0 || area.height() <= 0 || size() == m_programSize) {
+        return;
+    }
+    const int widthShare = std::clamp(qRound(100.0 * width() / area.width()), 40, 100);
+    const int heightShare = std::clamp(qRound(100.0 * height() / area.height()), 40, 100);
+    m_programSize = size();
+    m_userSized = true;
+    m_fitSize = QSize();
+    m_fitted = Fit{};
+    if (AppSettings* settings = AppSettings::instance(); settings != nullptr) {
+        settings->rememberWindowShares(QStringLiteral("grid"), widthShare, heightShare);
+    }
 }
 
 void GridWindow::layoutCells()
@@ -642,6 +680,7 @@ void GridWindow::fitToCells()
     m_placed = true;
     setGeometry(placed);
     m_fitSize = size();
+    m_programSize = size();
 }
 
 void GridWindow::followShare()
@@ -651,7 +690,9 @@ void GridWindow::followShare()
         return;
     }
     m_share = share;
-    m_userSized = false;
+    if (m_userSized) {
+        return;
+    }
     m_fitSize = QSize();
     m_fitted = Fit{};
     fitToCells();
@@ -676,6 +717,7 @@ void GridWindow::followFrame(const QString& serial)
         applyPointer();
         updateHints();
     }
+    publishCells();
     emit picturesChanged();
 }
 
@@ -803,6 +845,7 @@ void GridWindow::publishCells()
     QVariantList cells;
     cells.reserve(static_cast<qsizetype>(m_cells.cells().size()));
     for (const GridCells::Cell& cell : m_cells.cells()) {
+        const QRectF picture = pictureOf(cell.serial);
         cells.append(QVariantMap{{QStringLiteral("serial"), cell.serial},
                                  {QStringLiteral("name"), cell.name},
                                  {QStringLiteral("remark"), cell.remark},
@@ -820,7 +863,11 @@ void GridWindow::publishCells()
                                  {QStringLiteral("x"), cell.area.x()},
                                  {QStringLiteral("y"), cell.area.y()},
                                  {QStringLiteral("width"), cell.area.width()},
-                                 {QStringLiteral("height"), cell.area.height()}});
+                                 {QStringLiteral("height"), cell.area.height()},
+                                 {QStringLiteral("pictureX"), picture.x()},
+                                 {QStringLiteral("pictureY"), picture.y()},
+                                 {QStringLiteral("pictureWidth"), picture.width()},
+                                 {QStringLiteral("pictureHeight"), picture.height()}});
     }
     if (cells == m_published) {
         return;

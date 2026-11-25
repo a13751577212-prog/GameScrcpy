@@ -154,6 +154,7 @@ private slots:
     void followToolbarSide();
     void followShare();
     void followPhoneHints();
+    void commitSize();
 
 protected:
     bool event(QEvent* event) override;
@@ -198,6 +199,10 @@ private:
     QPointer<QQuickItem> m_overlay;
     qreal m_aspect = 0;
     double m_share = 0.85;
+    double m_widthShare = 0;
+    double m_heightShare = 0;
+    QTimer m_sizeCommit;
+    QSize m_programSize;
     bool m_fullScreen = false;
     bool m_toolbarPinned = false;
     bool m_toolbarPinnedRequest = false;

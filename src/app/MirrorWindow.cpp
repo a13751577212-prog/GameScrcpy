@@ -17,6 +17,7 @@
 
 #include <QCoreApplication>
 #include <QCursor>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMetaObject>
 #include <QMouseEvent>
@@ -48,6 +49,7 @@ constexpr qreal kLeastZoom = 0.5;
 constexpr qreal kMostZoom = 2.0;
 constexpr std::chrono::milliseconds kTitleRest{2000};
 constexpr std::chrono::milliseconds kClipCheck{100};
+constexpr std::chrono::milliseconds kSizeSettle{350};
 
 bool plain(Qt::WindowStates states)
 {
@@ -129,8 +131,21 @@ MirrorWindow::MirrorWindow(const render::GraphicsDevice& graphics, std::shared_p
     if (AppSettings* settings = AppSettings::instance(); settings != nullptr) {
         connect(settings, &AppSettings::valuesChanged, this, &MirrorWindow::followToolbarSide);
         connect(settings, &AppSettings::valuesChanged, this, &MirrorWindow::followShare);
+        const QSize saved = settings->windowShares(QStringLiteral("mirror"));
+        m_widthShare = saved.width() > 0 ? saved.width() / 100.0 : 0;
+        m_heightShare = saved.height() > 0 ? saved.height() / 100.0 : 0;
     }
-    resize(360, 720);
+    m_sizeCommit.setSingleShot(true); // source-rule-allow R9: a debounce; the drag settles before it is saved
+    m_sizeCommit.setInterval(kSizeSettle);
+    connect(&m_sizeCommit, &QTimer::timeout, this, &MirrorWindow::commitSize);
+    const QScreen* primary = QGuiApplication::primaryScreen();
+    if (m_widthShare > 0 && m_heightShare > 0 && primary != nullptr) {
+        const QRect area = primary->availableGeometry();
+        resize(qRound(area.width() * m_widthShare), qRound(area.height() * m_heightShare));
+    } else {
+        resize(360, 720);
+    }
+    m_programSize = size();
 }
 
 MirrorWindow::~MirrorWindow()
@@ -1096,11 +1111,18 @@ void MirrorWindow::setMini(bool on)
         showNormal();
         if (m_miniRestore.isValid()) {
             setGeometry(m_miniRestore);
-        } else if (screen() != nullptr && m_aspect > 0) {
+            m_programSize = size();
+        } else if (screen() != nullptr) {
             const QRect area = screen()->availableGeometry();
-            const qreal height = std::min(area.height() * m_share, area.width() * m_share / m_aspect);
-            const QSize fitted(qRound(height * m_aspect), qRound(height));
-            setGeometry(QRect(area.center() - QPoint(fitted.width() / 2, fitted.height() / 2), fitted));
+            if (m_widthShare > 0 && m_heightShare > 0) {
+                const QSize saved(qRound(area.width() * m_widthShare), qRound(area.height() * m_heightShare));
+                setGeometry(QRect(area.center() - QPoint(saved.width() / 2, saved.height() / 2), saved));
+            } else if (m_aspect > 0) {
+                const qreal height = std::min(area.height() * m_share, area.width() * m_share / m_aspect);
+                const QSize fitted(qRound(height * m_aspect), qRound(height));
+                setGeometry(QRect(area.center() - QPoint(fitted.width() / 2, fitted.height() / 2), fitted));
+            }
+            m_programSize = size();
         }
         if (m_miniStates.testFlag(Qt::WindowFullScreen)) {
             setFullScreen(true);
@@ -1312,10 +1334,35 @@ void MirrorWindow::keyPressEvent(QKeyEvent* event)
 
 void MirrorWindow::resizeEvent(QResizeEvent* event)
 {
+    const bool dragged = event->spontaneous();
     QQuickWindow::resizeEvent(event);
     layoutContent();
     applyPointer();
     updateHints();
+    if (dragged && isVisible() && size() != m_programSize && plain(windowStates()) && !m_mini && !m_logicShown) {
+        m_sizeCommit.start();
+    }
+}
+
+void MirrorWindow::commitSize()
+{
+    m_sizeCommit.stop();
+    const QScreen* where = screen();
+    if (where == nullptr || !isVisible() || !plain(windowStates()) || m_mini || m_logicShown) {
+        return;
+    }
+    const QRect area = where->availableGeometry();
+    if (area.width() <= 0 || area.height() <= 0 || size() == m_programSize) {
+        return;
+    }
+    const int widthShare = std::clamp(qRound(100.0 * width() / area.width()), 40, 100);
+    const int heightShare = std::clamp(qRound(100.0 * height() / area.height()), 40, 100);
+    m_widthShare = widthShare / 100.0;
+    m_heightShare = heightShare / 100.0;
+    m_programSize = size();
+    if (AppSettings* settings = AppSettings::instance(); settings != nullptr) {
+        settings->rememberWindowShares(QStringLiteral("mirror"), widthShare, heightShare);
+    }
 }
 
 void MirrorWindow::followWindowState()
@@ -1332,6 +1379,7 @@ void MirrorWindow::followWindowState()
         if (!on && !states.testFlag(Qt::WindowMinimized)) {
             if (plain(states) && m_normalGeometry.isValid()) {
                 setGeometry(m_normalGeometry);
+                m_programSize = size();
             }
             m_normalGeometry = QRect();
             m_restoreMaximized = false;
@@ -1357,7 +1405,11 @@ void MirrorWindow::fitToPicture()
         const QSize target = miniGeometry().size();
         if (target != size()) {
             resize(target);
+            m_programSize = size();
         }
+        return;
+    }
+    if (m_widthShare > 0 && m_heightShare > 0) {
         return;
     }
     const qreal aspect = content.width() / content.height();
@@ -1371,6 +1423,7 @@ void MirrorWindow::fitToPicture()
     const QSizeF available = screen()->availableGeometry().size() * m_share;
     const qreal height = std::min(available.height() - top - bottom, (available.width() - right) / aspect);
     resize(qRound(height * aspect) + right, qRound(height) + top + bottom);
+    m_programSize = size();
 }
 
 void MirrorWindow::followShare()
@@ -1380,6 +1433,9 @@ void MirrorWindow::followShare()
         return;
     }
     m_share = share;
+    if (m_widthShare > 0 && m_heightShare > 0) {
+        return;
+    }
     m_aspect = 0;
     fitToPicture();
 }

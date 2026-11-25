@@ -623,6 +623,26 @@ struct WindowPlacement {
     friend bool operator==(const WindowPlacement&, const WindowPlacement&) = default;
 };
 
+// Width and height shares, in percent of the screen's available geometry, of a
+// window the user resized by dragging its edge. Zero means no manual size yet.
+struct WindowShares {
+    std::int32_t gridWidth = 0;
+    std::int32_t gridHeight = 0;
+    std::int32_t mirrorWidth = 0;
+    std::int32_t mirrorHeight = 0;
+
+    template <typename V, typename Self>
+    static void visit(V& v, Self& m)
+    {
+        v.integer("gridWidth", m.gridWidth, 0, 100);
+        v.integer("gridHeight", m.gridHeight, 0, 100);
+        v.integer("mirrorWidth", m.mirrorWidth, 0, 100);
+        v.integer("mirrorHeight", m.mirrorHeight, 0, 100);
+    }
+
+    friend bool operator==(const WindowShares&, const WindowShares&) = default;
+};
+
 struct RecentConnection {
     static constexpr std::size_t kMaxNameLength = 256;
     static constexpr std::int64_t kMaxTime = std::int64_t{1} << 40;
@@ -1004,6 +1024,7 @@ struct Settings {
     Companion companion;
     WindowPlacement hubWindow;
     WindowPlacement assistantWindow;
+    WindowShares windowShares;
     Wireless wireless;
     OtherVideo otherVideo;
     Palette palette;
@@ -1033,6 +1054,7 @@ struct Settings {
         v.object("companion", m.companion, Page::Input);
         v.object("hubWindow", m.hubWindow);
         v.object("assistantWindow", m.assistantWindow);
+        v.object("windowShares", m.windowShares);
         v.object("wireless", m.wireless);
         v.object("otherVideo", m.otherVideo);
         v.object("palette", m.palette);

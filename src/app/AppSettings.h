@@ -4,6 +4,7 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QSize>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -71,6 +72,8 @@ public:
     Q_INVOKABLE void resetDeviceValue(const QString& id, const QString& path);
 
     Q_INVOKABLE bool placeWindow(QWindow* window, const QString& which = QStringLiteral("hub"));
+    [[nodiscard]] QSize windowShares(const QString& which) const;
+    void rememberWindowShares(const QString& which, int widthPercent, int heightPercent);
 
     [[nodiscard]] settings::DeviceSettings device(const std::string& id) const;
     [[nodiscard]] const std::map<std::string, settings::DeviceSettings, std::less<>>& devices() const;
