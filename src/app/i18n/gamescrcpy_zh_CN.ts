@@ -7663,6 +7663,10 @@
         <translation>没有需要重连的设备</translation>
     </message>
     <message>
+        <source>Scanning for phones...</source>
+        <translation>正在重新检测设备…</translation>
+    </message>
+    <message>
         <source>Reboot this phone</source>
         <translation>重启这台设备</translation>
     </message>

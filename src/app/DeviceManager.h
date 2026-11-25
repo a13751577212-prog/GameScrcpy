@@ -354,6 +354,7 @@ public:
     Q_INVOKABLE void gridNavigation(const QString& serial, const QString& command);
     Q_INVOKABLE void gridScreen(const QString& serial, bool off);
     Q_INVOKABLE int retryGridConnections();
+    Q_INVOKABLE bool hasPendingReconnects() const noexcept { return !m_reconnectPending.isEmpty(); }
     Q_INVOKABLE void rebootDevice(const QString& serial);
     Q_INVOKABLE void setAutoMirror(bool on);
     Q_INVOKABLE bool autoMirror() const noexcept { return m_autoMirror; }
@@ -891,6 +892,8 @@ private:
     QMap<QString, QString> m_remarks;
     QSet<QString> m_followOff;
     QSet<QString> m_mirrorBlocked;
+    QSet<QString> m_reconnectPending;
+    bool m_retryArmed = false;
     QString m_gridMaster;
     bool m_autoMirror = true;
     bool m_gridAutoOpened = false;

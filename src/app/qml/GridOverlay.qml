@@ -248,7 +248,8 @@ Item {
             onClicked: {
                 const count = DeviceManager.retryGridConnections()
                 overlay.toast(count > 0 ? qsTr("Reconnecting %1 phone(s)").arg(count)
-                                        : qsTr("Nothing to reconnect"))
+                                        : DeviceManager.hasPendingReconnects() ? qsTr("Scanning for phones...")
+                                                                               : qsTr("Nothing to reconnect"))
             }
         }
 

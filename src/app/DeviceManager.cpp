@@ -2032,6 +2032,9 @@ void DeviceManager::disconnectDevice(const QString& serial)
         return;
     }
     m_mirrorBlocked.insert(serial);
+    // Only an explicit press of the grid retry button may bring this phone back.
+    m_reconnectPending.insert(serial);
+    m_retryArmed = false;
     Row& row = m_rows[static_cast<std::size_t>(index)];
     stopRecording(row, false);
     if (row.capture != nullptr) {
@@ -2734,6 +2737,27 @@ void DeviceManager::devicesChanged(const adb::TrackerUpdate& update)
     if (!m_rows.empty()) {
         emit dataChanged(index(0), index(static_cast<int>(m_rows.size()) - 1));
     }
+    // Phones that were missing when the retry button was pressed show up here.
+    if (m_retryArmed && !m_reconnectPending.isEmpty()) {
+        QStringList ready;
+        for (const QString& serial : m_reconnectPending) {
+            const int at = indexOf(serial);
+            if (at < 0) {
+                continue;
+            }
+            const Row& row = m_rows[static_cast<std::size_t>(at)];
+            if (row.listed && row.state == adb::DeviceState::Device && !streaming(row) && canConnect(row)) {
+                ready.append(serial);
+            }
+        }
+        for (const QString& serial : ready) {
+            m_reconnectPending.remove(serial);
+            connectDevice(serial);
+        }
+        if (m_reconnectPending.isEmpty()) {
+            m_retryArmed = false;
+        }
+    }
     autoMirrorNow();
     emit countsChanged();
 }
@@ -2827,6 +2851,10 @@ void DeviceManager::sessionChanged(const QString& serial, const session::Session
     const bool reconnecting = state.phase == session::SessionPhase::Reconnecting;
     const std::string powerKey = row.serial.toStdString();
     if (streaming) {
+        m_reconnectPending.remove(serial);
+        if (m_reconnectPending.isEmpty()) {
+            m_retryArmed = false;
+        }
         const bool wireless = row.link == session::TransportKind::WifiDirect || isWireless(row.serial);
         m_streamPower.begin(powerKey,
                             wireless ? platform::StreamingLink::Wireless : platform::StreamingLink::Wired);
@@ -3405,17 +3433,69 @@ void DeviceManager::setGridFollowAll(bool on)
 
 int DeviceManager::retryGridConnections()
 {
+    // A press of the retry button is the only thing that may bring a disconnected
+    // phone back. The grid cell disappears on disconnect, so keep a list of serials
+    // instead of relying on the checked state or on the session phase.
+    m_retryArmed = true;
     QStringList pending;
+    for (const QString& serial : m_reconnectPending) {
+        pending.append(serial);
+    }
     for (const Row& row : m_rows) {
-        if (m_followOff.contains(row.serial) || active(row.session.phase)) {
+        const auto phase = row.session.phase;
+        const bool starting = phase == session::SessionPhase::Deploying || phase == session::SessionPhase::Launching ||
+                              phase == session::SessionPhase::Connecting || phase == session::SessionPhase::Handshaking;
+        if (m_reconnectPending.contains(row.serial) || !row.listed || row.state != adb::DeviceState::Device ||
+            row.demo != nullptr || row.capture != nullptr || row.aoaOnly || row.transported || isBoxRow(row) ||
+            streaming(row) || starting) {
             continue;
         }
         pending.append(row.serial);
     }
-    for (const QString& serial : pending) {
-        connectDevice(serial);
+    // Ask adb for a fresh list right away; the tracker may not have reported a phone
+    // that was just plugged back in yet.
+    if (m_adbReady) {
+        std::jthread([this, client = m_adb]() {
+            const auto devices = client.devices();
+            if (!devices) {
+                return;
+            }
+            adb::TrackerUpdate update;
+            update.serverAvailable = true;
+            update.devices = *devices;
+            QMetaObject::invokeMethod(this, [this, update] { devicesChanged(update); }, Qt::QueuedConnection);
+        }).detach();
     }
-    return static_cast<int>(pending.size());
+    int started = 0;
+    for (const QString& serial : pending) {
+        const int at = indexOf(serial);
+        if (at < 0) {
+            continue; // not in adb's list yet; devicesChanged() connects it when it appears
+        }
+        Row& row = m_rows[static_cast<std::size_t>(at)];
+        if (streaming(row)) {
+            m_reconnectPending.remove(serial);
+            continue;
+        }
+        if (row.controller != nullptr && row.controller->active()) {
+            // Stopping/Reconnecting counts as busy: start() would ignore us. Finish the
+            // stop first and let sessionChanged() start a clean session afterwards.
+            const auto phase = row.session.phase;
+            if (phase != session::SessionPhase::Stopping && phase != session::SessionPhase::Reconnecting) {
+                continue; // a connection is already being established; leave it alone
+            }
+            row.reconnectWhenStopped = true;
+            row.controller->stop();
+        } else {
+            connectDevice(serial);
+        }
+        m_reconnectPending.insert(serial);
+        ++started;
+    }
+    if (m_reconnectPending.isEmpty()) {
+        m_retryArmed = false;
+    }
+    return started;
 }
 
 void DeviceManager::rebootDevice(const QString& serial)
