@@ -7662,6 +7662,18 @@
         <source>Nothing to reconnect</source>
         <translation>没有需要重连的设备</translation>
     </message>
+    <message>
+        <source>Reboot this phone</source>
+        <translation>重启这台设备</translation>
+    </message>
+    <message>
+        <source>Rebooting %1</source>
+        <translation>正在重启 %1</translation>
+    </message>
+    <message>
+        <source>Could not reboot %1</source>
+        <translation>无法重启 %1</translation>
+    </message>
 </context>
 <context>
     <name>GuideHero</name>

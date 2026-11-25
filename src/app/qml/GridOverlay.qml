@@ -14,6 +14,7 @@ Item {
     readonly property var chosen: overlay.cells.find(entry => entry.master === true) ?? null
     readonly property real topInset: titleBar.height
     readonly property int footerHeight: Theme.size.control
+    readonly property int footerNudge: 2
     readonly property int edge: 0
     readonly property int gap: Theme.space.sm
     readonly property int margin: Theme.space.sm
@@ -103,6 +104,14 @@ Item {
             cellMenu.close()
         if (syncDialog.visible && overlay.cellOf(internal.syncSerial) === null)
             syncDialog.close()
+    }
+
+    Connections {
+        target: DeviceManager
+
+        function onRebootFailed(serial) {
+            overlay.toast(qsTr("Could not reboot %1").arg(serial), "triangle-alert")
+        }
     }
 
     QtObject {
@@ -359,7 +368,9 @@ Item {
         }
 
         contentItem: Icon {
-            anchors.centerIn: parent
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: 1
             name: button.iconName
             size: Theme.size.iconSmall
             color: !button.enabled ? Theme.colors.textTertiary
@@ -403,13 +414,11 @@ Item {
                 id: gridFrame
 
                 readonly property color edge: cell.chosen ? Theme.colors.accent
-                                           : cell.following ? Theme.colors.info : Theme.colors.strokeSubtle
+                                           : cell.following ? Theme.colors.info : Theme.colors.strokeStrong
                 objectName: "gridFrame"
                 anchors.fill: parent
                 radius: Theme.radius.lg
                 color: Theme.colors.bgRaised
-                border.width: Theme.size.stroke
-                border.color: gridFrame.edge
             }
 
             Rectangle {
@@ -424,6 +433,25 @@ Item {
                 topLeftRadius: Math.max(0, Theme.radius.lg - pad)
                 topRightRadius: Math.max(0, Theme.radius.lg - pad)
                 color: Theme.colors.bgSunken
+            }
+
+            Rectangle {
+                objectName: "gridFrameHalo"
+                anchors.fill: parent
+                radius: Theme.radius.lg
+                color: "transparent"
+                border.width: Theme.size.edgeLine * 2 + Theme.size.stroke
+                border.color: gridFrame.edge
+                opacity: 0.18
+            }
+
+            Rectangle {
+                objectName: "gridFrameLine"
+                anchors.fill: parent
+                radius: Theme.radius.lg
+                color: "transparent"
+                border.width: Theme.size.edgeLine
+                border.color: gridFrame.edge
             }
 
             Item {
@@ -448,6 +476,7 @@ Item {
                     objectName: "gridStatusDot"
                     x: Theme.space.md
                     anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenterOffset: overlay.footerNudge
                     width: Theme.size.pillDot
                     height: width
                     radius: width / 2
@@ -463,6 +492,7 @@ Item {
                     anchors.right: buttonRow.left
                     anchors.rightMargin: cell.middleGap
                     anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenterOffset: overlay.footerNudge
                     height: Math.max(0, overlay.footerHeight - 2 * Theme.space.xxs)
 
                     Text {
@@ -471,6 +501,7 @@ Item {
                         objectName: "gridName"
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
+                        height: Theme.size.controlSmall
                         width: Math.max(0, Math.min(implicitWidth, labelArea.width
                                      - (screenButton.visible ? screenButton.width + Theme.space.xs : 0)))
                         textFormat: Text.PlainText
@@ -514,6 +545,7 @@ Item {
                     anchors.right: buttonRow.left
                     anchors.rightMargin: Theme.space.xs
                     anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenterOffset: overlay.footerNudge
                     height: parent.height
 
                     MouseArea {
@@ -539,6 +571,7 @@ Item {
                     anchors.right: parent.right
                     anchors.rightMargin: Theme.space.xs
                     anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenterOffset: overlay.footerNudge
                     spacing: Theme.space.xxs
 
                     CellButton {
@@ -791,6 +824,17 @@ Item {
         }
 
         MenuSeparator {}
+
+        MenuItem {
+            objectName: "gridMenuReboot"
+            iconName: "refresh-cw"
+            text: qsTr("Reboot this phone")
+            onTriggered: {
+                const entry = overlay.cellOf(cellMenu.serial)
+                overlay.toast(qsTr("Rebooting %1").arg(entry?.name ?? cellMenu.serial), "refresh-cw")
+                DeviceManager.rebootDevice(cellMenu.serial)
+            }
+        }
 
         MenuItem {
             objectName: "gridMenuDisconnect"

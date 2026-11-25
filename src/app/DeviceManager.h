@@ -354,6 +354,7 @@ public:
     Q_INVOKABLE void gridNavigation(const QString& serial, const QString& command);
     Q_INVOKABLE void gridScreen(const QString& serial, bool off);
     Q_INVOKABLE int retryGridConnections();
+    Q_INVOKABLE void rebootDevice(const QString& serial);
     Q_INVOKABLE void setAutoMirror(bool on);
     Q_INVOKABLE bool autoMirror() const noexcept { return m_autoMirror; }
 
@@ -419,6 +420,7 @@ signals:
     void linkRevisionChanged();
     void gridMasterChanged();
     void phoneSuggested(int ticket, const QString& captureSerial, const QString& deviceId, double score);
+    void rebootFailed(const QString& serial);
 
 private:
     struct TaskRun {

@@ -3418,6 +3418,27 @@ int DeviceManager::retryGridConnections()
     return static_cast<int>(pending.size());
 }
 
+void DeviceManager::rebootDevice(const QString& serial)
+{
+    if (serial.isEmpty() || !m_adbReady) {
+        emit rebootFailed(serial);
+        return;
+    }
+    std::jthread([this, serial, client = m_adb]() {
+        const auto result = client.shell(serial.toStdString(), "reboot");
+        const bool sent = static_cast<bool>(result);
+        QMetaObject::invokeMethod(
+            this,
+            [this, serial, sent] {
+                qInfo("reboot %s: %s", qUtf8Printable(serial), sent ? "command sent" : "failed");
+                if (!sent) {
+                    emit rebootFailed(serial);
+                }
+            },
+            Qt::QueuedConnection);
+    }).detach();
+}
+
 void DeviceManager::setAutoMirror(bool on)
 {
     m_autoMirror = on;
